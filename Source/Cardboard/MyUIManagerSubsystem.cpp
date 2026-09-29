@@ -35,9 +35,10 @@ void UMyUIManagerSubsystem::InitializeUI(
 
 	if (MenuRoot)
 	{
-		return;
+		MenuRoot->RemoveFromParent();
+		MenuRoot = nullptr;
 	}
-
+	
 	MenuRoot = CreateWidget<UUserWidget>(
 		PlayerController,
 		InMenuRootClass
@@ -64,6 +65,14 @@ void UMyUIManagerSubsystem::ShowSessionMenu()
 	if (UMenuRootWidget* RootWidget = Cast<UMenuRootWidget>(MenuRoot))
 	{
 		RootWidget->ShowSessionMenu();
+	}
+}
+
+void UMyUIManagerSubsystem::ShowHostMenu()
+{
+	if (UMenuRootWidget* RootWidget = Cast<UMenuRootWidget>(MenuRoot))
+	{
+		RootWidget->ShowHostMenu();
 	}
 }
 

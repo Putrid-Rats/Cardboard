@@ -28,6 +28,9 @@ public:
 	void ShowSessionMenu();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowHostMenu();
+	
+	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowLobby();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")

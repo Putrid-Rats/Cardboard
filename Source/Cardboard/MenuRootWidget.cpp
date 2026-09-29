@@ -31,6 +31,15 @@ void UMenuRootWidget::SetOnlyVisible(UUserWidget* WidgetToShow)
 		);
 	}
 
+	if (HostMenu)
+	{
+		HostMenu->SetVisibility(
+			HostMenu == WidgetToShow
+				? ESlateVisibility::Visible
+				: ESlateVisibility::Collapsed
+		);
+	}
+
 	if (Lobby)
 	{
 		Lobby->SetVisibility(
@@ -52,6 +61,9 @@ void UMenuRootWidget::SetOnlyVisible(UUserWidget* WidgetToShow)
 
 void UMenuRootWidget::ShowMainMenu()
 {
+	UE_LOG(LogTemp, Warning, TEXT("ShowMainMenu called. MainMenu widget = %s"),
+		MainMenu ? TEXT("VALID") : TEXT("NULL"));
+
 	SetOnlyVisible(MainMenu);
 }
 
@@ -61,8 +73,16 @@ void UMenuRootWidget::ShowSessionMenu()
 	SetOnlyVisible(SessionMenu);
 }
 
+void UMenuRootWidget::ShowHostMenu()
+{
+	SetOnlyVisible(HostMenu);
+}
+
 void UMenuRootWidget::ShowLobby()
 {
+	UE_LOG(LogTemp, Warning, TEXT("ShowLobby called. Lobby widget = %s"),
+		Lobby ? TEXT("VALID") : TEXT("NULL"));
+
 	SetOnlyVisible(Lobby);
 }
 

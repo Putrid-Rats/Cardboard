@@ -20,6 +20,9 @@ public:
 	void ShowSessionMenu();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowHostMenu();
+	
+	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowLobby();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
@@ -33,6 +36,9 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UUserWidget> SessionMenu;
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UUserWidget> HostMenu;
+	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UUserWidget> Lobby;
 
