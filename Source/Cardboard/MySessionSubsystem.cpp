@@ -1,6 +1,7 @@
 #include "MySessionSubsystem.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
+#include "Online/OnlineSessionNames.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 
 void UMySessionSubsystem::Initialize(
@@ -264,6 +265,459 @@ void UMySessionSubsystem::OnCreateSessionComplete(
 	);
 
 	World->ServerTravel(TEXT("/Game/TCG_Main/Maps/L_Lobby?listen"));
+}
+
+void UMySessionSubsystem::FindLobbies()
+{
+    if (!SessionInterface.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("FindLobbies failed: Session Interface is invalid.")
+        );
+
+        AvailableSessions.Empty();
+        OnSessionsFound.Broadcast();
+
+        return;
+    }
+
+
+    IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+
+    if (!OnlineSubsystem)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("FindLobbies failed: OnlineSubsystem not found.")
+        );
+
+        AvailableSessions.Empty();
+        OnSessionsFound.Broadcast();
+
+        return;
+    }
+
+
+    IOnlineIdentityPtr IdentityInterface =
+        OnlineSubsystem->GetIdentityInterface();
+
+    if (!IdentityInterface.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("FindLobbies failed: Identity Interface is invalid.")
+        );
+
+        AvailableSessions.Empty();
+        OnSessionsFound.Broadcast();
+
+        return;
+    }
+
+
+    FUniqueNetIdPtr UserId =
+        IdentityInterface->GetUniquePlayerId(0);
+
+    if (!UserId.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("FindLobbies failed: Unique user ID is invalid.")
+        );
+
+        AvailableSessions.Empty();
+        OnSessionsFound.Broadcast();
+
+        return;
+    }
+
+
+    AvailableSessions.Empty();
+
+
+    SessionSearch =
+        MakeShared<FOnlineSessionSearch>();
+
+    SessionSearch->bIsLanQuery = false;
+    SessionSearch->MaxSearchResults = 50;
+
+	SessionSearch->QuerySettings.Set(
+		SEARCH_LOBBIES,
+		true,
+		EOnlineComparisonOp::Equals
+	);
+
+
+    FindSessionsCompleteHandle =
+        SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
+            FOnFindSessionsCompleteDelegate::CreateUObject(
+                this,
+                &UMySessionSubsystem::OnFindSessionsComplete
+            )
+        );
+
+
+    UE_LOG(
+        LogTemp,
+        Log,
+        TEXT("Searching for Steam lobbies...")
+    );
+
+
+    const bool bStarted =
+        SessionInterface->FindSessions(
+            *UserId,
+            SessionSearch.ToSharedRef()
+        );
+
+
+    if (!bStarted)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("FindSessions failed to start.")
+        );
+
+        SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(
+            FindSessionsCompleteHandle
+        );
+
+        AvailableSessions.Empty();
+        OnSessionsFound.Broadcast();
+    }
+}
+
+void UMySessionSubsystem::OnFindSessionsComplete(
+	bool bWasSuccessful
+)
+{
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(
+			FindSessionsCompleteHandle
+		);
+	}
+
+
+	AvailableSessions.Empty();
+
+
+	if (!bWasSuccessful || !SessionSearch.IsValid())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("FindSessions failed.")
+		);
+
+		OnSessionsFound.Broadcast();
+
+		return;
+	}
+
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Found %d sessions."),
+		SessionSearch->SearchResults.Num()
+	);
+
+
+	for (int32 Index = 0;
+		 Index < SessionSearch->SearchResults.Num();
+		 ++Index)
+	{
+		const FOnlineSessionSearchResult& Result =
+			SessionSearch->SearchResults[Index];
+
+
+		FString LobbyName;
+
+		Result.Session.SessionSettings.Get(
+			FName(TEXT("LOBBY_NAME")),
+			LobbyName
+		);
+
+
+		FSessionInfo Info;
+
+		Info.LobbyName =
+			LobbyName.IsEmpty()
+				? TEXT("Unnamed Lobby")
+				: LobbyName;
+
+		Info.MaxPlayers =
+			Result.Session.SessionSettings.NumPublicConnections;
+
+		Info.CurrentPlayers =
+			Info.MaxPlayers -
+			Result.Session.NumOpenPublicConnections;
+
+		Info.SessionIndex = Index;
+
+
+		AvailableSessions.Add(Info);
+
+
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT(
+				"Session %d: %s | Players: %d/%d"
+			),
+			Index,
+			*Info.LobbyName,
+			Info.CurrentPlayers,
+			Info.MaxPlayers
+		);
+	}
+
+
+	OnSessionsFound.Broadcast();
+}
+
+void UMySessionSubsystem::JoinLobby(
+    int32 SessionIndex
+)
+{
+    if (!SessionInterface.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("JoinLobby failed: Session Interface is invalid.")
+        );
+
+        OnSessionJoined.Broadcast(false);
+
+        return;
+    }
+
+
+    if (!SessionSearch.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("JoinLobby failed: No search has been performed.")
+        );
+
+        OnSessionJoined.Broadcast(false);
+
+        return;
+    }
+
+
+    if (!SessionSearch->SearchResults.IsValidIndex(SessionIndex))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT(
+                "JoinLobby failed: Invalid session index %d."
+            ),
+            SessionIndex
+        );
+
+        OnSessionJoined.Broadcast(false);
+
+        return;
+    }
+
+
+    IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+
+    if (!OnlineSubsystem)
+    {
+        OnSessionJoined.Broadcast(false);
+        return;
+    }
+
+
+    IOnlineIdentityPtr IdentityInterface =
+        OnlineSubsystem->GetIdentityInterface();
+
+    if (!IdentityInterface.IsValid())
+    {
+        OnSessionJoined.Broadcast(false);
+        return;
+    }
+
+
+    FUniqueNetIdPtr UserId =
+        IdentityInterface->GetUniquePlayerId(0);
+
+    if (!UserId.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("JoinLobby failed: User ID is invalid.")
+        );
+
+        OnSessionJoined.Broadcast(false);
+
+        return;
+    }
+
+
+    JoinSessionCompleteHandle =
+        SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
+            FOnJoinSessionCompleteDelegate::CreateUObject(
+                this,
+                &UMySessionSubsystem::OnJoinSessionComplete
+            )
+        );
+
+
+	if (AvailableSessions.IsValidIndex(SessionIndex))
+	{
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT(
+				"Joining session %d: %s"
+			),
+			SessionIndex,
+			*AvailableSessions[SessionIndex].LobbyName
+		);
+	}
+	else
+	{
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT(
+				"Joining session %d"
+			),
+			SessionIndex
+		);
+	}
+
+
+    const bool bStarted =
+        SessionInterface->JoinSession(
+            *UserId,
+            NAME_GameSession,
+            SessionSearch->SearchResults[SessionIndex]
+        );
+
+
+    if (!bStarted)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("JoinSession failed to start.")
+        );
+
+        SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(
+            JoinSessionCompleteHandle
+        );
+
+        OnSessionJoined.Broadcast(false);
+    }
+}
+
+void UMySessionSubsystem::OnJoinSessionComplete(
+	FName SessionName,
+	EOnJoinSessionCompleteResult::Type Result
+)
+{
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(
+			JoinSessionCompleteHandle
+		);
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT(
+			"OnJoinSessionComplete result: %d"
+		),
+		static_cast<int32>(Result)
+	);
+
+	if (Result != EOnJoinSessionCompleteResult::Success)
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("Join session failed.")
+		);
+
+		OnSessionJoined.Broadcast(false);
+		return;
+	}
+
+	FString ConnectString;
+
+	if (!SessionInterface->GetResolvedConnectString(
+			SessionName,
+			ConnectString
+		))
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT(
+				"Join succeeded but could not resolve connect string."
+			)
+		);
+
+		OnSessionJoined.Broadcast(false);
+		return;
+	}
+
+	UGameInstance* GameInstance = GetGameInstance();
+
+	if (!GameInstance)
+	{
+		OnSessionJoined.Broadcast(false);
+		return;
+	}
+
+	APlayerController* PlayerController =
+		GameInstance->GetFirstLocalPlayerController();
+
+	if (!PlayerController)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT(
+				"Join succeeded but PlayerController is invalid."
+			)
+		);
+
+		OnSessionJoined.Broadcast(false);
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT(
+			"Join successful. Travelling to host: %s"
+		),
+		*ConnectString
+	);
+
+	OnSessionJoined.Broadcast(true);
+
+	PlayerController->ClientTravel(
+		ConnectString,
+		ETravelType::TRAVEL_Absolute
+	);
 }
 
 void UMySessionSubsystem::DestroyLobby()
