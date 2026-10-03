@@ -33,8 +33,18 @@ struct CARDBOARD_API FSessionInfo
 };
 
 
+// ---------------------------------------------------------
+// SESSION DELEGATES
+// ---------------------------------------------------------
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     FOnSessionCreated,
+    bool,
+    bWasSuccessful
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+    FOnSessionDestroyed,
     bool,
     bWasSuccessful
 );
@@ -50,6 +60,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 );
 
 
+// ---------------------------------------------------------
+// SESSION SUBSYSTEM
+// ---------------------------------------------------------
+
 UCLASS()
 class CARDBOARD_API UMySessionSubsystem : public UGameInstanceSubsystem
 {
@@ -61,9 +75,9 @@ public:
     virtual void Deinitialize() override;
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // CREATE
-    // -------------------------
+    // -----------------------------------------------------
 
     UFUNCTION(BlueprintCallable, Category = "Sessions")
     void CreateLobby(
@@ -72,33 +86,35 @@ public:
     );
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // FIND
-    // -------------------------
+    // -----------------------------------------------------
 
     UFUNCTION(BlueprintCallable, Category = "Sessions")
     void FindLobbies();
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // JOIN
-    // -------------------------
+    // -----------------------------------------------------
 
     UFUNCTION(BlueprintCallable, Category = "Sessions")
-    void JoinLobby(int32 SessionIndex);
+    void JoinLobby(
+        int32 SessionIndex
+    );
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // DESTROY
-    // -------------------------
+    // -----------------------------------------------------
 
     UFUNCTION(BlueprintCallable, Category = "Sessions")
     void DestroyLobby();
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // RESULTS
-    // -------------------------
+    // -----------------------------------------------------
 
     UPROPERTY(
         BlueprintReadOnly,
@@ -107,9 +123,9 @@ public:
     TArray<FSessionInfo> AvailableSessions;
 
 
-    // -------------------------
+    // -----------------------------------------------------
     // EVENTS
-    // -------------------------
+    // -----------------------------------------------------
 
     UPROPERTY(
         BlueprintAssignable,
@@ -129,12 +145,27 @@ public:
     )
     FOnSessionJoined OnSessionJoined;
 
+    UPROPERTY(
+        BlueprintAssignable,
+        Category = "Sessions"
+    )
+    FOnSessionDestroyed OnSessionDestroyed;
+
 
 private:
+
+    // -----------------------------------------------------
+    // ONLINE SESSION
+    // -----------------------------------------------------
 
     IOnlineSessionPtr SessionInterface;
 
     TSharedPtr<FOnlineSessionSearch> SessionSearch;
+
+
+    // -----------------------------------------------------
+    // DELEGATE HANDLES
+    // -----------------------------------------------------
 
     FDelegateHandle CreateSessionCompleteHandle;
 
@@ -142,6 +173,12 @@ private:
 
     FDelegateHandle JoinSessionCompleteHandle;
 
+    FDelegateHandle DestroySessionCompleteHandle;
+
+
+    // -----------------------------------------------------
+    // CALLBACKS
+    // -----------------------------------------------------
 
     void OnCreateSessionComplete(
         FName SessionName,
@@ -155,5 +192,10 @@ private:
     void OnJoinSessionComplete(
         FName SessionName,
         EOnJoinSessionCompleteResult::Type Result
+    );
+
+    void OnDestroySessionComplete(
+        FName SessionName,
+        bool bWasSuccessful
     );
 };

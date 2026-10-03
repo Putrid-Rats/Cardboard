@@ -4,6 +4,7 @@
 #include "Online/OnlineSessionNames.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 
+
 void UMySessionSubsystem::Initialize(
 	FSubsystemCollectionBase& Collection
 )
@@ -49,6 +50,18 @@ void UMySessionSubsystem::Deinitialize()
 	{
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(
 			CreateSessionCompleteHandle
+		);
+
+		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(
+			FindSessionsCompleteHandle
+		);
+
+		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(
+			JoinSessionCompleteHandle
+		);
+
+		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+			DestroySessionCompleteHandle
 		);
 
 		if (SessionInterface->GetNamedSession(NAME_GameSession))
@@ -730,6 +743,7 @@ void UMySessionSubsystem::DestroyLobby()
 			TEXT("DestroyLobby: Session Interface is invalid.")
 		);
 
+		OnSessionDestroyed.Broadcast(false);
 		return;
 	}
 
@@ -741,8 +755,17 @@ void UMySessionSubsystem::DestroyLobby()
 			TEXT("DestroyLobby: No active session.")
 		);
 
+		OnSessionDestroyed.Broadcast(false);
 		return;
 	}
+
+	DestroySessionCompleteHandle =
+		SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+			FOnDestroySessionCompleteDelegate::CreateUObject(
+				this,
+				&UMySessionSubsystem::OnDestroySessionComplete
+			)
+		);
 
 	UE_LOG(
 		LogTemp,
@@ -750,5 +773,44 @@ void UMySessionSubsystem::DestroyLobby()
 		TEXT("Destroying current session.")
 	);
 
-	SessionInterface->DestroySession(NAME_GameSession);
+	const bool bStarted =
+		SessionInterface->DestroySession(NAME_GameSession);
+
+	if (!bStarted)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("DestroyLobby: DestroySession failed to start.")
+		);
+
+		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+			DestroySessionCompleteHandle
+		);
+
+		OnSessionDestroyed.Broadcast(false);
+	}
+}
+
+void UMySessionSubsystem::OnDestroySessionComplete(
+	FName SessionName,
+	bool bWasSuccessful
+)
+{
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+			DestroySessionCompleteHandle
+		);
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("OnDestroySessionComplete: %s / Success: %s"),
+		*SessionName.ToString(),
+		bWasSuccessful ? TEXT("true") : TEXT("false")
+	);
+
+	OnSessionDestroyed.Broadcast(bWasSuccessful);
 }
