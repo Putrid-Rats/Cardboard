@@ -59,6 +59,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     bWasSuccessful
 );
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+    FOnUnexpectedDisconnect
+);
+
 
 // ---------------------------------------------------------
 // SESSION SUBSYSTEM
@@ -127,75 +131,54 @@ public:
     // EVENTS
     // -----------------------------------------------------
 
-    UPROPERTY(
-        BlueprintAssignable,
-        Category = "Sessions"
-    )
+    UPROPERTY(BlueprintAssignable, Category = "Sessions")
     FOnSessionCreated OnSessionCreated;
 
-    UPROPERTY(
-        BlueprintAssignable,
-        Category = "Sessions"
-    )
+    UPROPERTY(BlueprintAssignable, Category = "Sessions")
     FOnSessionsFound OnSessionsFound;
 
-    UPROPERTY(
-        BlueprintAssignable,
-        Category = "Sessions"
-    )
+    UPROPERTY(BlueprintAssignable, Category = "Sessions")
     FOnSessionJoined OnSessionJoined;
 
-    UPROPERTY(
-        BlueprintAssignable,
-        Category = "Sessions"
-    )
+    UPROPERTY(BlueprintAssignable, Category = "Sessions")
     FOnSessionDestroyed OnSessionDestroyed;
 
+    UPROPERTY(BlueprintAssignable, Category = "Sessions")
+    FOnUnexpectedDisconnect OnUnexpectedDisconnect;
 
 private:
-
-    // -----------------------------------------------------
-    // ONLINE SESSION
-    // -----------------------------------------------------
-
     IOnlineSessionPtr SessionInterface;
-
     TSharedPtr<FOnlineSessionSearch> SessionSearch;
 
-
-    // -----------------------------------------------------
-    // DELEGATE HANDLES
-    // -----------------------------------------------------
-
     FDelegateHandle CreateSessionCompleteHandle;
-
     FDelegateHandle FindSessionsCompleteHandle;
-
     FDelegateHandle JoinSessionCompleteHandle;
-
     FDelegateHandle DestroySessionCompleteHandle;
 
+    bool bCreateAfterDestroy = false;
+    bool bIsDestroyingSession = false;
+    bool bShuttingDown = false;
 
-    // -----------------------------------------------------
-    // CALLBACKS
-    // -----------------------------------------------------
+    FString PendingLobbyName;
+    ESessionPrivacy PendingPrivacy = ESessionPrivacy::Public;
 
-    void OnCreateSessionComplete(
-        FName SessionName,
-        bool bWasSuccessful
-    );
-
-    void OnFindSessionsComplete(
-        bool bWasSuccessful
-    );
-
+    void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
+    void OnFindSessionsComplete(bool bWasSuccessful);
     void OnJoinSessionComplete(
         FName SessionName,
         EOnJoinSessionCompleteResult::Type Result
     );
-
     void OnDestroySessionComplete(
         FName SessionName,
         bool bWasSuccessful
     );
+
+    void HandleNetworkFailure(
+        UWorld* World,
+        UNetDriver* NetDriver,
+        ENetworkFailure::Type FailureType,
+        const FString& ErrorString
+    );
+
+    void HandlePreExit();
 };

@@ -16,6 +16,9 @@ public:
 	virtual void AddPlayerState(APlayerState* PlayerState) override;
 	virtual void RemovePlayerState(APlayerState* PlayerState) override;
 
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	void NotifyReadyStateChanged();
+	
 	UPROPERTY(BlueprintAssignable, Category = "Lobby")
 	FOnLobbyPlayersChanged OnLobbyPlayersChanged;
 };

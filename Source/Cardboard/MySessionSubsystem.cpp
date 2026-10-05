@@ -1,8 +1,13 @@
 #include "MySessionSubsystem.h"
+
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Online/OnlineSessionNames.h"
 #include "Interfaces/OnlineIdentityInterface.h"
+
+#include "Engine/Engine.h"
+#include "Engine/NetDriver.h"
+#include "Misc/CoreDelegates.h"
 
 
 void UMySessionSubsystem::Initialize(
@@ -42,10 +47,32 @@ void UMySessionSubsystem::Initialize(
 			TEXT("MySessionSubsystem: Session Interface is invalid")
 		);
 	}
+
+	if (GEngine)
+	{
+		GEngine->OnNetworkFailure().AddUObject(
+			this,
+			&UMySessionSubsystem::HandleNetworkFailure
+		);
+	}
+
+	FCoreDelegates::OnPreExit.AddUObject(
+		this,
+		&UMySessionSubsystem::HandlePreExit
+	);
 }
 
 void UMySessionSubsystem::Deinitialize()
 {
+	bShuttingDown = true;
+
+	if (GEngine)
+	{
+		GEngine->OnNetworkFailure().RemoveAll(this);
+	}
+
+	FCoreDelegates::OnPreExit.RemoveAll(this);
+	
 	if (SessionInterface.IsValid())
 	{
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(
@@ -104,17 +131,64 @@ void UMySessionSubsystem::CreateLobby(
         return;
     }
 
-    if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
-    {
-        UE_LOG(
-            LogTemp,
-            Warning,
-            TEXT("CreateLobby failed: A session already exists.")
-        );
+	if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+	{
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("CreateLobby: Existing session found. Destroying it before creating a new one.")
+		);
 
-        OnSessionCreated.Broadcast(false);
-        return;
-    }
+		if (bIsDestroyingSession)
+		{
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("CreateLobby: Session is already being destroyed.")
+			);
+
+			OnSessionCreated.Broadcast(false);
+			return;
+		}
+
+		bCreateAfterDestroy = true;
+		PendingLobbyName = LobbyName;
+		PendingPrivacy = Privacy;
+
+		bIsDestroyingSession = true;
+
+		DestroySessionCompleteHandle =
+			SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+				FOnDestroySessionCompleteDelegate::CreateUObject(
+					this,
+					&UMySessionSubsystem::OnDestroySessionComplete
+				)
+			);
+
+		const bool bStarted =
+			SessionInterface->DestroySession(NAME_GameSession);
+
+		if (!bStarted)
+		{
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("CreateLobby: Failed to start cleanup of existing session.")
+			);
+
+			SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+				DestroySessionCompleteHandle
+			);
+
+			bIsDestroyingSession = false;
+			bCreateAfterDestroy = false;
+			PendingLobbyName.Empty();
+
+			OnSessionCreated.Broadcast(false);
+		}
+
+		return;
+	}
 
     IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 
@@ -747,17 +821,30 @@ void UMySessionSubsystem::DestroyLobby()
 		return;
 	}
 
+	if (bIsDestroyingSession)
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("DestroyLobby: Session destruction already in progress.")
+		);
+
+		return;
+	}
+
 	if (SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
 	{
 		UE_LOG(
 			LogTemp,
 			Log,
-			TEXT("DestroyLobby: No active session.")
+			TEXT("DestroyLobby: No active session. Treating cleanup as successful.")
 		);
 
-		OnSessionDestroyed.Broadcast(false);
+		OnSessionDestroyed.Broadcast(true);
 		return;
 	}
+
+	bIsDestroyingSession = true;
 
 	DestroySessionCompleteHandle =
 		SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
@@ -788,6 +875,8 @@ void UMySessionSubsystem::DestroyLobby()
 			DestroySessionCompleteHandle
 		);
 
+		bIsDestroyingSession = false;
+
 		OnSessionDestroyed.Broadcast(false);
 	}
 }
@@ -804,6 +893,8 @@ void UMySessionSubsystem::OnDestroySessionComplete(
 		);
 	}
 
+	bIsDestroyingSession = false;
+
 	UE_LOG(
 		LogTemp,
 		Log,
@@ -812,5 +903,113 @@ void UMySessionSubsystem::OnDestroySessionComplete(
 		bWasSuccessful ? TEXT("true") : TEXT("false")
 	);
 
+	// We destroyed an old session specifically because the user
+	// requested to host again.
+	if (bCreateAfterDestroy)
+	{
+		const FString LobbyName = PendingLobbyName;
+		const ESessionPrivacy Privacy = PendingPrivacy;
+
+		bCreateAfterDestroy = false;
+		PendingLobbyName.Empty();
+
+		if (!bWasSuccessful)
+		{
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("Could not destroy old session before creating new lobby.")
+			);
+
+			OnSessionCreated.Broadcast(false);
+			return;
+		}
+
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("Old session destroyed. Creating new lobby: %s"),
+			*LobbyName
+		);
+
+		CreateLobby(LobbyName, Privacy);
+		return;
+	}
+
+	// Normal Leave / cleanup.
 	OnSessionDestroyed.Broadcast(bWasSuccessful);
+}
+
+void UMySessionSubsystem::HandleNetworkFailure(
+	UWorld* World,
+	UNetDriver* NetDriver,
+	ENetworkFailure::Type FailureType,
+	const FString& ErrorString
+)
+{
+	if (bShuttingDown)
+	{
+		return;
+	}
+
+	if (!World || !SessionInterface.IsValid())
+	{
+		return;
+	}
+
+	// We only want the CLIENT to react to losing its connection.
+	// A host should not leave its own lobby because a client disconnected.
+	if (NetDriver && NetDriver->IsServer())
+	{
+		return;
+	}
+
+	if (SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
+	{
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT(
+			"Unexpected network failure. Type=%d Error=%s"
+		),
+		static_cast<int32>(FailureType),
+		*ErrorString
+	);
+
+	if (bIsDestroyingSession)
+	{
+		return;
+	}
+
+	// Tell the local game immediately.
+	OnUnexpectedDisconnect.Broadcast();
+
+	// Clean up the local session state.
+	DestroyLobby();
+}
+
+void UMySessionSubsystem::HandlePreExit()
+{
+	bShuttingDown = true;
+
+	if (!SessionInterface.IsValid())
+	{
+		return;
+	}
+
+	if (SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
+	{
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Application exiting. Destroying local GameSession.")
+	);
+
+	SessionInterface->DestroySession(NAME_GameSession);
 }

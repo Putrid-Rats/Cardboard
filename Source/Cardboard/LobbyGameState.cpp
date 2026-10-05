@@ -13,3 +13,8 @@ void ALobbyGameState::RemovePlayerState(APlayerState* PlayerState)
 
 	OnLobbyPlayersChanged.Broadcast();
 }
+
+void ALobbyGameState::NotifyReadyStateChanged()
+{
+	OnLobbyPlayersChanged.Broadcast();
+}
