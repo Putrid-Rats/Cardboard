@@ -1,6 +1,6 @@
 # Cardboard: Summary for Claude Code
 
-Written in a Claude Cowork session on 2026-10-07 from the user's (Gordon's) handoff document and the university assignment brief. Read this before working on the project.
+Written in a Claude Cowork session on 2026-10-07 from the team's handoff document and the university assignment brief. Read this before working on the project.
 
 ## Project
 
@@ -9,14 +9,10 @@ Written in a Claude Cowork session on 2026-10-07 from the user's (Gordon's) hand
 - University team project ("Projektowanie gier sieciowych"), in a team of 3.
 - Split: **C++** handles sessions, replicated state and infrastructure. **Blueprints** handle GameModes, maps, the PlayerController, UI and game flow. Keep it that way, and don't move Blueprint classes to C++ without a concrete reason.
 
-## Working with Gordon
+## Tips
 
-- He's a beginner to intermediate Unreal user. Give **exact step-by-step instructions**, **one change at a time**, and name the exact nodes and pins for Blueprints.
-- Make small, incremental changes. Don't rewrite working graphs or architecture. Add Sequence branches and comment boxes instead of restructuring.
-- When debugging, add **one checkpoint at a time**.
-- Always label each thing as **confirmed working**, **implemented but untested**, **proposed**, or **broken**.
-- **You can't read Blueprints** (`.uasset` is binary). Ask Gordon to select the nodes, press Ctrl+C and paste them as text. Use that rather than guessing.
-- There's no second PC for Steam testing on two machines yet. His teammates may be able to help with that. Never claim the multiplayer lifecycle is verified just because the code exists.
+- Blueprints (`.uasset`) are binary. To share or review a graph or widget layout, select the nodes (or widgets in the Hierarchy), press Ctrl+C and paste them as text.
+- There's no second PC for Steam testing yet. Don't call the multiplayer flow verified until it has been tested over Steam on two machines.
 
 ## C++ classes (in `Source/`)
 
@@ -77,12 +73,15 @@ The "Video memory has been exhausted" message in this setup is just the editor +
   - WBP_Lobby → RefreshLobbyUI: Set Is Enabled (StartGame_Button) = AreAllPlayersReady.
   - GM_Lobby_TCG → StartGame: Cast To LobbyGameState → Branch(AreAllPlayersReady) → ServerTravel (server-side guard).
 - ServerTravel in GM_Lobby_TCG is the **AdvancedSessions** node — list the plugin in the docs.
+- Lobby player names: `ShortenName` (pure function in WBP_Lobby) truncates past 15 chars with "...", names sit in Scale Boxes (Scale to Fit, Down Only, slot H-Align Fill). Player 1/2 panels now use identical slot settings. Confirmed working.
+- **First Steam test (two machines): travel broken.** Non-seamless ServerTravel made the host recreate its Steam listen socket on vport 7777 before the old one was released (`Cannot create listen socket. Already have a listen socket on P2P vport 7777` → `LoadMap: failed to Listen` → host falls back to L_MainMenu). The client was disconnected and refused while reconnecting.
+- Fix applied, **untested**: Seamless Travel. `GM_Lobby_TCG` → Use Seamless Travel = true; new empty map `L_Transition` set as Project Settings → Maps & Modes → Transition Map (also add it to the packaging map list later).
+  - Watch for: seamless travel keeps the existing `PlayerController_TCG` (same class on L_Gameplay), so its BeginPlay may not fire again on L_Gameplay (UI/cursor setup). Seamless travel doesn't run in PIE by default — test standalone over Steam.
 
 ## Next tasks
 
-1. Lobby player names: truncate above 15 characters with "..." and shrink the font to fit the panel (in progress).
-2. Test the full flow over Steam on two machines (teammates).
-3. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
+1. Test seamless travel over Steam on two machines; then handle PlayerController/UI setup after seamless travel if needed.
+2. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
 
 Ready button flow (working):
 
@@ -105,7 +104,7 @@ Gameplay travel URL:
 |---|---|
 | Menu: host, join, server browser | Done |
 | Lobby and ready system; host starts only when everyone is ready | Done (2-player PIE; untested over Steam) |
-| Travel to the gameplay level | Works over IP (2-player PIE); untested over Steam |
+| Travel to the gameplay level | Works over IP (2-player PIE); broken over Steam (non-seamless), seamless travel fix untested |
 | Clear goal: a PVP or PVE win condition | Not started (card game rules) |
 | End of match: automatic stop for all players, summary screen (results/stats), restart / next level / back to lobby | Not started |
 | Packaged standalone build, ready to share | Not done. Include `steam_appid.txt` for testing |
