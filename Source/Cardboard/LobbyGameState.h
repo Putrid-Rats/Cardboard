@@ -18,7 +18,11 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Lobby")
 	void NotifyReadyStateChanged();
-	
+
+	// True when the lobby is full (2 players) and every player is ready.
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	bool AreAllPlayersReady() const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Lobby")
 	FOnLobbyPlayersChanged OnLobbyPlayersChanged;
 };
