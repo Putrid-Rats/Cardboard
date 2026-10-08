@@ -78,10 +78,31 @@ The "Video memory has been exhausted" message in this setup is just the editor +
 - Fix applied, **untested**: Seamless Travel. `GM_Lobby_TCG` → Use Seamless Travel = true; new empty map `L_Transition` set as Project Settings → Maps & Modes → Transition Map (also add it to the packaging map list later).
   - Watch for: seamless travel keeps the existing `PlayerController_TCG` (same class on L_Gameplay), so its BeginPlay may not fire again on L_Gameplay (UI/cursor setup). Seamless travel doesn't run in PIE by default — test standalone over Steam.
 
+**2026-10-09 (branch `gameplay_seating`):**
+
+- Seamless travel over Steam (two machines): **confirmed working**. Both players reach L_Gameplay.
+- `ASeatedPawn` (C++) is the gameplay pawn. Its components are SeatRoot → YawPivot → PitchPivot → Camera, plus a TableViewPoint.
+  - Free mouse look reads the raw mouse delta (`GetInputMouseDelta` in Tick), because the Enhanced Input mouse action never delivered a value. Yaw is limited to ±100° and pitch to −60..40°.
+  - Space (`IA_TableView` in `IMC_MouseLook`) glides the camera to TableViewPoint and shows the cursor. Pressing it again glides back.
+  - `LookRotation` replicates to the other player (`COND_SkipOwner` plus an unreliable server RPC), so each player sees the other's cutout turn. Network rotators arrive as 0..360, so the code normalises them before clamping; without that, the client's left/down look snapped to the opposite limit.
+  - `SeatIndex` is set when the pawn spawns (ExposeOnSpawn) and replicates once (`COND_InitialOnly`).
+  - `OnTableViewChanged(bool)` is a Blueprint event, the hook for showing the hand of cards later.
+  - **Confirmed working** in 2-player PIE.
+- `BP_Table` (`Content/TCG_Main/Gameplay`) has a TableTop mesh, `Seat_0` and `Seat_1` arrows facing each other, and a pure function `GetSeatTransform(SeatIndex)`. It's placed in L_Gameplay, which uses External Actors so the team can edit the level in parallel.
+- `GM_Gameplay_TCG` overrides **HandleStartingNewPlayer**, which also runs for seamless-travel players. It doesn't call the parent, so no default pawn spawns. The steps are:
+  - Find BP_Table once and pick a random first seat.
+  - Spawn `BP_SeatedPawn` at `GetSeatTransform(NextSeatIndex)`, with Seat Index and Owner set.
+  - Possess it, then set `NextSeatIndex = 1 − NextSeatIndex`.
+  - Players sitting opposite each other is **confirmed working**.
+- Random table yaw: Set Actor Rotation (random yaw 0..360) runs on the server before the first spawn. BP_Table has Replicates and Replicate Movement on. **Confirmed working.**
+- Both players currently use the same cutout. Per-seat Danny/Fiona cutouts are postponed.
+
 ## Next tasks
 
-1. Test seamless travel over Steam on two machines; then handle PlayerController/UI setup after seamless travel if needed.
-2. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
+1. Hand of cards: cards slide up from the bottom in table view (via `OnTableViewChanged`). Then dragging with the mouse and dropping onto the table with snapping and centering.
+2. Card game rules: 5-card opening draw, mana +1 per round, and cards with cost, attack and health.
+3. Optional: per-seat cutouts (Danny for seat 0, Fiona for seat 1, chosen by `SeatIndex`). For now both players use the same cutout mesh, `Player/f_player`, renamed from `f_player_danny`.
+4. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
 
 Ready button flow (working):
 
@@ -104,7 +125,7 @@ Gameplay travel URL:
 |---|---|
 | Menu: host, join, server browser | Done |
 | Lobby and ready system; host starts only when everyone is ready | Done (2-player PIE; untested over Steam) |
-| Travel to the gameplay level | Works over IP (2-player PIE); broken over Steam (non-seamless), seamless travel fix untested |
+| Travel to the gameplay level | Done (seamless travel; works over IP and over Steam on two machines) |
 | Clear goal: a PVP or PVE win condition | Not started (card game rules) |
 | End of match: automatic stop for all players, summary screen (results/stats), restart / next level / back to lobby | Not started |
 | Packaged standalone build, ready to share | Not done. Include `steam_appid.txt` for testing |

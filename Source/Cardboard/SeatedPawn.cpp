@@ -200,14 +200,17 @@ void ASeatedPawn::ServerSetLookRotation_Implementation(FRotator NewLookRotation)
 
 void ASeatedPawn::OnRep_LookRotation()
 {
+	LookRotation = ClampLookRotation(LookRotation);
 	ApplyLookRotation();
 }
 
 FRotator ASeatedPawn::ClampLookRotation(const FRotator& InRotation) const
 {
+	// Rotators sent over the network arrive as 0..360 (-10 becomes 350), so bring them back
+	// to -180..180 first, otherwise looking left/down would clamp to the far right/up limit.
 	return FRotator(
-		FMath::Clamp(InRotation.Pitch, MinPitch, MaxPitch),
-		FMath::Clamp(InRotation.Yaw, -MaxYaw, MaxYaw),
+		FMath::Clamp(FRotator::NormalizeAxis(InRotation.Pitch), MinPitch, MaxPitch),
+		FMath::Clamp(FRotator::NormalizeAxis(InRotation.Yaw), -MaxYaw, MaxYaw),
 		0.0f
 	);
 }
