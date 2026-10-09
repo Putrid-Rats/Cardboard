@@ -20,6 +20,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Cards", meta = (RequiredAssetDataTags = "RowStructure=/Script/Cardboard.CardDefinition"))
 	TSoftObjectPtr<UDataTable> CardDataTable;
 
+	// Row ID of The Coin in the card table: given to the player who goes second, never in the deck.
+	// Playing it gives +1 mana for that turn instead of going on the table.
+	UPROPERTY(Config, EditAnywhere, Category = "Cards")
+	FName CoinCardId = TEXT("Coin");
+
+	static FName GetCoinCardId();
+
 	static UDataTable* GetCardDataTable();
 
 	// Null if the ID isn't in the table (or no table is set).

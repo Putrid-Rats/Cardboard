@@ -29,3 +29,4 @@ ID,CardName,Cost,Attack,Health,Trait,AbilityId
 28,Test Card 28,10,9,12,None,
 29,Test Card 29,10,10,11,None,
 30,Test Card 30,10,11,10,None,
+Coin,The Coin,0,0,1,None,

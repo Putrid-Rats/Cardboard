@@ -8,6 +8,11 @@ UDataTable* UCardboardSettings::GetCardDataTable()
 	return GetDefault<UCardboardSettings>()->CardDataTable.LoadSynchronous();
 }
 
+FName UCardboardSettings::GetCoinCardId()
+{
+	return GetDefault<UCardboardSettings>()->CoinCardId;
+}
+
 const FCardDefinition* UCardboardSettings::FindCard(FName CardId)
 {
 	const UDataTable* CardTable = GetCardDataTable();

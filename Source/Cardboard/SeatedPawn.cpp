@@ -4,7 +4,9 @@
 #include "Camera/CameraComponent.h"
 #include "CardActor.h"
 #include "CardboardSettings.h"
+#include "CardDefinition.h"
 #include "CardGameState.h"
+#include "Components/TextRenderComponent.h"
 #include "CardTable.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -37,6 +39,19 @@ ASeatedPawn::ASeatedPawn()
 	HandRoot = CreateDefaultSubobject<USceneComponent>(TEXT("HandRoot"));
 	HandRoot->SetupAttachment(Camera);
 	HandRoot->SetRelativeLocation(HandShownOffset - FVector(0.0f, 0.0f, HandHiddenDrop));
+
+	// Top-left corner of the view, in front of the camera. Owner-only so the opponent never sees it.
+	StatusText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("StatusText"));
+	StatusText->SetupAttachment(Camera);
+	StatusText->SetRelativeLocation(FVector(30.0f, -26.0f, 15.0f));
+	StatusText->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
+	StatusText->SetHorizontalAlignment(EHTA_Left);
+	StatusText->SetVerticalAlignment(EVRTA_TextTop);
+	StatusText->SetWorldSize(1.0f);
+	StatusText->SetTextRenderColor(FColor::White);
+	StatusText->SetOnlyOwnerSee(true);
+	StatusText->SetCastShadow(false);
+	StatusText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	CardClass = ACardActor::StaticClass();
 }
@@ -140,6 +155,42 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 
 	UpdateHandInteraction();
 	UpdateHandCards(DeltaSeconds, false);
+
+	if (const APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (bInTableView && PlayerController->WasInputKeyJustPressed(EKeys::E))
+		{
+			EndTurn();
+		}
+	}
+
+	UpdateStatusText();
+}
+
+void ASeatedPawn::UpdateStatusText()
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+	FString Status;
+
+	if (!CardGameState || !CardGameState->IsMatchStarted())
+	{
+		Status = TEXT("Waiting for the other player...");
+	}
+	else if (CardGameState->IsMatchOver())
+	{
+		Status = CardGameState->GetWinningSeat() == SeatIndex ? TEXT("You won!") : TEXT("You lost");
+	}
+	else if (CardGameState->GetCurrentTurnSeat() == INDEX_NONE)
+	{
+		Status = CardGameState->GetFirstSeat() == SeatIndex ? TEXT("Coin: you go first") : TEXT("Coin: you go second");
+	}
+	else
+	{
+		Status = IsMyTurn() ? TEXT("Your turn (E = end turn)") : TEXT("Opponent's turn");
+	}
+
+	Status += FString::Printf(TEXT("\nMana %d/%d   Deck %d   Health %d"), Mana, MaxMana, DeckCount, Health);
+	StatusText->SetText(FText::FromString(Status));
 }
 
 void ASeatedPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -186,13 +237,56 @@ void ASeatedPawn::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// Server: the player just sat down. Shuffle their deck and deal the opening hand once.
-	if (!bDealtOpeningHand)
+	// Server: the player just sat down. Shuffle their deck once; the GameState deals when both are seated.
+	if (!bDeckBuilt)
 	{
-		bDealtOpeningHand = true;
+		bDeckBuilt = true;
 		BuildDeck();
-		DrawCards(OpeningHandSize);
 	}
+
+	if (ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>())
+	{
+		CardGameState->TryStartMatch();
+	}
+}
+
+void ASeatedPawn::BeginTurn(int32 ManaCap)
+{
+	MaxMana = FMath::Min(MaxMana + 1, ManaCap);
+	Mana = MaxMana;
+	DrawCards(1);
+}
+
+bool ASeatedPawn::IsMyTurn() const
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+	return CardGameState && !CardGameState->IsMatchOver() && CardGameState->GetCurrentTurnSeat() == SeatIndex;
+}
+
+void ASeatedPawn::EndTurn()
+{
+	if (IsMyTurn())
+	{
+		ServerEndTurn();
+	}
+}
+
+void ASeatedPawn::ServerEndTurn_Implementation()
+{
+	if (ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>())
+	{
+		CardGameState->EndTurn(SeatIndex);
+	}
+}
+
+void ASeatedPawn::NotifyCoinFlipped(int32 FirstSeat)
+{
+	OnCoinFlipped(SeatIndex == FirstSeat);
+}
+
+void ASeatedPawn::NotifyTurnStarted(int32 TurnSeat)
+{
+	OnTurnStarted(SeatIndex == TurnSeat);
 }
 
 void ASeatedPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -224,10 +318,11 @@ void ASeatedPawn::BuildDeck()
 {
 	Deck.Reset();
 
-	// For now the deck is every card in the sheet once.
+	// For now the deck is every card in the sheet once, except The Coin.
 	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
 	{
 		Deck = CardTable->GetRowNames();
+		Deck.Remove(UCardboardSettings::GetCoinCardId());
 	}
 
 	// Fisher-Yates shuffle.
@@ -248,21 +343,24 @@ void ASeatedPawn::DrawCards(int32 Count)
 
 	for (int32 Drawn = 0; Drawn < Count && Deck.Num() > 0; ++Drawn)
 	{
-		const FName CardId = Deck.Pop();
-
-		// Full hand: the card is lost, like in Hearthstone.
-		if (Hand.Num() >= MaxHandSize)
-		{
-			continue;
-		}
-
-		FHandCard NewCard;
-		NewCard.InstanceId = NextHandInstanceId++;
-		NewCard.CardId = CardId;
-		Hand.Add(NewCard);
+		AddCardToHand(Deck.Pop());
 	}
 
 	DeckCount = Deck.Num();
+}
+
+void ASeatedPawn::AddCardToHand(FName CardId)
+{
+	// Full hand: the card is lost, like in Hearthstone.
+	if (!HasAuthority() || Hand.Num() >= MaxHandSize)
+	{
+		return;
+	}
+
+	FHandCard NewCard;
+	NewCard.InstanceId = NextHandInstanceId++;
+	NewCard.CardId = CardId;
+	Hand.Add(NewCard);
 
 	// OnRep doesn't run on the server, and the listen server host needs its visuals too.
 	SyncHandVisuals();
@@ -468,7 +566,14 @@ void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, 
 	FVector RayOrigin;
 	FVector RayDirection;
 
-	if (bOverBoard && Table && PlayerController.DeprojectMousePositionToWorld(RayOrigin, RayDirection))
+	// The Coin never goes on the table: anywhere above the hand plays it, without opening a gap.
+	const bool bDraggingCoin = DraggedCard && DraggedCard->GetCardId() == UCardboardSettings::GetCoinCardId();
+
+	if (bOverBoard && bDraggingCoin)
+	{
+		BoardInsertIndex = 0;
+	}
+	else if (bOverBoard && Table && PlayerController.DeprojectMousePositionToWorld(RayOrigin, RayDirection))
 	{
 		int32 InsertIndex;
 
@@ -480,7 +585,7 @@ void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, 
 
 	if (Table && BoardInsertIndex != PreviousIndex)
 	{
-		Table->SetPlacementPreview(SeatIndex, BoardInsertIndex);
+		Table->SetPlacementPreview(SeatIndex, bDraggingCoin ? INDEX_NONE : BoardInsertIndex);
 	}
 }
 
@@ -502,17 +607,36 @@ void ASeatedPawn::ServerPlayCard_Implementation(int32 HandInstanceId, int32 Inse
 		return HandCard.InstanceId == HandInstanceId;
 	});
 
-	// Later: also check it's this player's turn and they have enough mana.
-	if (HandIndex == INDEX_NONE || !Table || Table->GetRowSize(SeatIndex) >= Table->MaxRowSize)
+	if (HandIndex == INDEX_NONE || !Table || !IsMyTurn())
 	{
 		ClientRejectPlay(HandInstanceId);
 		return;
 	}
 
 	const FName CardId = Hand[HandIndex].CardId;
+	const bool bIsCoin = CardId == UCardboardSettings::GetCoinCardId();
+	const FCardDefinition* Definition = UCardboardSettings::FindCard(CardId);
+	const int32 Cost = Definition ? Definition->Cost : 0;
+
+	if (Mana < Cost || (!bIsCoin && Table->GetRowSize(SeatIndex) >= Table->MaxRowSize))
+	{
+		ClientRejectPlay(HandInstanceId);
+		return;
+	}
+
+	Mana -= Cost;
 	Hand.RemoveAt(HandIndex);
 
-	Table->PlaceCard(SeatIndex, InsertIndex, CardId);
+	// The Coin is spent for +1 mana this turn; every other card goes on the table.
+	if (bIsCoin)
+	{
+		++Mana;
+	}
+	else
+	{
+		Table->PlaceCard(SeatIndex, InsertIndex, CardId);
+	}
+
 	SyncHandVisuals();
 }
 
@@ -802,4 +926,6 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	DOREPLIFETIME_CONDITION(ASeatedPawn, Hand, COND_OwnerOnly);
 	DOREPLIFETIME(ASeatedPawn, DeckCount);
 	DOREPLIFETIME(ASeatedPawn, Health);
+	DOREPLIFETIME(ASeatedPawn, Mana);
+	DOREPLIFETIME(ASeatedPawn, MaxMana);
 }

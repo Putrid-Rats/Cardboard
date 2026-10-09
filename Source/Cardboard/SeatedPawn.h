@@ -10,6 +10,7 @@ class APlayerController;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class UTextRenderComponent;
 
 // One card in a player's hand.
 USTRUCT(BlueprintType)
@@ -93,13 +94,44 @@ public:
 	// Most cards a hand can hold.
 	static constexpr int32 MaxHandSize = 6;
 
-	// Cards dealt from the shuffled deck when the player sits down.
-	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand", meta = (ClampMin = 0, ClampMax = 6))
-	int32 OpeningHandSize = 5;
+	// Temporary turn/mana/deck/health readout in the corner of this player's view (only they see it).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
+	TObjectPtr<UTextRenderComponent> StatusText;
 
 	// Server only. Moves cards from the top of the deck into the hand.
 	// With a full hand the drawn card is discarded; with an empty deck nothing happens (yet).
 	void DrawCards(int32 Count);
+
+	// Server only. Puts a specific card into the hand (e.g. The Coin). Discarded if the hand is full.
+	void AddCardToHand(FName CardId);
+
+	// Server only, called by ACardGameState: +1 max mana (up to ManaCap), refill, draw a card.
+	void BeginTurn(int32 ManaCap);
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
+	int32 GetMana() const { return Mana; }
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
+	int32 GetMaxMana() const { return MaxMana; }
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
+	bool IsMyTurn() const;
+
+	// Local player: ends this player's turn (also the E key in table view). Ignored if it isn't their turn.
+	UFUNCTION(BlueprintCallable, Category = "Seat|Turn")
+	void EndTurn();
+
+	// Every machine, on both pawns: the coin was flipped. Show the coin here.
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
+	void OnCoinFlipped(bool bThisPlayerGoesFirst);
+
+	// Every machine, on both pawns: a new turn started.
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
+	void OnTurnStarted(bool bThisPlayersTurn);
+
+	// Called by ACardGameState.
+	void NotifyCoinFlipped(int32 FirstSeat);
+	void NotifyTurnStarted(int32 TurnSeat);
 
 	// Cards left in the deck. Visible to both players.
 	UFUNCTION(BlueprintPure, Category = "Seat|Hand")
@@ -223,7 +255,7 @@ private:
 	// Server only: card IDs still to draw, the last one is the top.
 	TArray<FName> Deck;
 
-	bool bDealtOpeningHand = false;
+	bool bDeckBuilt = false;
 
 	UPROPERTY(Replicated)
 	int32 DeckCount = 0;
@@ -275,6 +307,18 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerDebugDamage(int32 Amount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerEndTurn();
+
+	// Mana left this turn (The Coin can push it above MaxMana).
+	UPROPERTY(Replicated)
+	int32 Mana = 0;
+
+	UPROPERTY(Replicated)
+	int32 MaxMana = 0;
+
+	void UpdateStatusText();
 
 	UPROPERTY(ReplicatedUsing = OnRep_Health)
 	int32 Health = 0;
