@@ -28,6 +28,39 @@ struct FHandCard
 	FName CardId;
 };
 
+// What a player is doing with their hand, sent to the opponent so they can mirror it with card backs.
+// Indices are hand slots left to right; card identities are never included.
+USTRUCT()
+struct FHandPose
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	int32 HoveredIndex = INDEX_NONE;
+
+	UPROPERTY()
+	int32 DraggedIndex = INDEX_NONE;
+
+	// Bit per slot: marked for replacing in the mulligan.
+	UPROPERTY()
+	int32 MarkedMask = 0;
+
+	// Where the dragged card is, in hand space (X = sideways, Y = up).
+	UPROPERTY()
+	FVector2D DragLocation = FVector2D::ZeroVector;
+
+	// The hand is raised (table view) rather than put away.
+	UPROPERTY()
+	bool bHandUp = false;
+
+	bool Equals(const FHandPose& Other) const
+	{
+		return HoveredIndex == Other.HoveredIndex && DraggedIndex == Other.DraggedIndex
+			&& MarkedMask == Other.MarkedMask && bHandUp == Other.bHandUp
+			&& DragLocation.Equals(Other.DragLocation, 0.2f);
+	}
+};
+
 // A player sitting at the table. Doesn't move, only looks around.
 // Free look: mouse turns the head (raw mouse delta), cursor hidden.
 // Table view (toggled with TableViewAction): camera blends to TableViewPoint, cursor shown for cards,
@@ -66,6 +99,11 @@ public:
 	// even while the camera is still gliding. Cards are attached here and laid out in a fan.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
 	TObjectPtr<USceneComponent> HandRoot;
+
+	// Where the other player sees this player's cards (backs), in front of the cutout.
+	// Child of YawPivot, so the cards turn with the player. Scale it to make the held cards bigger.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
+	TObjectPtr<USceneComponent> HeldHandRoot;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Input")
 	TObjectPtr<UInputMappingContext> SeatMappingContext;
@@ -137,6 +175,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
 	bool IsMulliganConfirmed() const { return bMulliganConfirmed; }
+
+	// Server only: replace these hand cards and mark this player's mulligan as done.
+	// Also used with an empty list when the mulligan time runs out.
+	void ApplyMulligan(const TArray<int32>& ReplaceInstanceIds);
 
 	// Every machine, on both pawns: the opening hands are dealt and the mulligan begins.
 	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
@@ -220,6 +262,10 @@ public:
 	// Dragged card: how far in front of the rest of the hand it floats.
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand")
 	float DragForward = 4.0f;
+
+	// Opponent's view: how far the held cards drop when this player puts the hand away (free look).
+	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand")
+	float HeldHandLowerDistance = 15.0f;
 
 	// Which seat at the table this player sits in (0 or 1). Set by the GameMode when spawning,
 	// replicated once so every client can pick the right cutout.
@@ -334,6 +380,28 @@ private:
 
 	// Local: hand cards (InstanceId) the player clicked to replace.
 	TSet<int32> MulliganMarked;
+
+	// Number of cards in hand, public (the opponent sees that many backs).
+	UPROPERTY(Replicated)
+	int32 HandCount = 0;
+
+	// Owner -> server -> opponent.
+	UPROPERTY(Replicated)
+	FHandPose HandPose;
+
+	FHandPose LastSentPose;
+	float PoseSendTimer = 0.0f;
+
+	UFUNCTION(Server, Unreliable)
+	void ServerSetHandPose(const FHandPose& NewPose);
+
+	// Opponent's machine: card backs mirroring this player's hand.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACardActor>> HeldCards;
+
+	void SendHandPose(float DeltaSeconds);
+	void UpdateHeldHand(float DeltaSeconds);
+	FTransform GetHeldCardTransform(int32 Index, int32 Count) const;
 
 	bool IsMulliganPhase() const;
 

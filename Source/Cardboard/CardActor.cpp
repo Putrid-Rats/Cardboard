@@ -55,10 +55,21 @@ UTextRenderComponent* ACardActor::CreateCardText(FName Name, float Horizontal, f
 	Text->SetVerticalAlignment(EVRTA_TextCenter);
 	Text->SetWorldSize(Size);
 	Text->SetTextRenderColor(Color);
+	Text->SetText(FText::GetEmpty());
 	Text->SetCastShadow(false);
 	Text->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	return Text;
+}
+
+void ACardActor::ClearCard()
+{
+	CardId = NAME_None;
+
+	for (UTextRenderComponent* Text : { NameText, TraitText, CostText, AttackText, HealthText })
+	{
+		Text->SetText(FText::GetEmpty());
+	}
 }
 
 void ACardActor::SetCard(FName InCardId)

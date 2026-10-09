@@ -25,8 +25,18 @@ void ACardGameState::TryStartMatch()
 	FirstSeat = FMath::RandRange(0, 1);
 	OnRep_FirstSeat();
 	SetPhase(EMatchPhase::CoinFlip);
+	SetPhaseTimer(&ACardGameState::StartMulligan, CoinFlipDuration);
+}
 
-	GetWorldTimerManager().SetTimer(MulliganTimer, this, &ACardGameState::StartMulligan, CoinFlipDuration, false);
+float ACardGameState::GetTimeRemaining() const
+{
+	return FMath::Max(PhaseEndServerTime - GetServerWorldTimeSeconds(), 0.0f);
+}
+
+void ACardGameState::SetPhaseTimer(void (ACardGameState::*Callback)(), float Duration)
+{
+	PhaseEndServerTime = GetServerWorldTimeSeconds() + Duration;
+	GetWorldTimerManager().SetTimer(PhaseTimer, this, Callback, Duration, false);
 }
 
 void ACardGameState::StartMulligan()
@@ -40,6 +50,26 @@ void ACardGameState::StartMulligan()
 	}
 
 	SetPhase(EMatchPhase::Mulligan);
+	SetPhaseTimer(&ACardGameState::OnMulliganTimeout, MulliganDuration);
+}
+
+void ACardGameState::OnMulliganTimeout()
+{
+	// Whoever hasn't confirmed keeps their whole hand. The last confirm starts the first turn.
+	for (int32 Seat = 0; Seat < 2; ++Seat)
+	{
+		ASeatedPawn* Pawn = FindSeatedPawn(Seat);
+
+		if (Pawn && !Pawn->IsMulliganConfirmed())
+		{
+			Pawn->ApplyMulligan(TArray<int32>());
+		}
+	}
+}
+
+void ACardGameState::OnTurnTimeout()
+{
+	EndTurn(CurrentTurnSeat);
 }
 
 void ACardGameState::NotifyMulliganConfirmed()
@@ -78,7 +108,8 @@ void ACardGameState::EndMatch(int32 InWinningSeat)
 	}
 
 	WinningSeat = InWinningSeat;
-	GetWorldTimerManager().ClearTimer(MulliganTimer);
+	GetWorldTimerManager().ClearTimer(PhaseTimer);
+	PhaseEndServerTime = 0.0f;
 
 	// OnRep doesn't run on the server, and the listen server host needs the events too.
 	OnRep_WinningSeat();
@@ -110,6 +141,7 @@ void ACardGameState::StartTurn(int32 Seat)
 
 	CurrentTurnSeat = Seat;
 	++TurnNumber;
+	SetPhaseTimer(&ACardGameState::OnTurnTimeout, TurnDuration);
 
 	if (ASeatedPawn* Pawn = FindSeatedPawn(Seat))
 	{
@@ -169,4 +201,5 @@ void ACardGameState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACardGameState, CurrentTurnSeat);
 	DOREPLIFETIME(ACardGameState, TurnNumber);
 	DOREPLIFETIME(ACardGameState, WinningSeat);
+	DOREPLIFETIME(ACardGameState, PhaseEndServerTime);
 }

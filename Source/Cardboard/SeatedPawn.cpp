@@ -40,6 +40,11 @@ ASeatedPawn::ASeatedPawn()
 	HandRoot->SetupAttachment(Camera);
 	HandRoot->SetRelativeLocation(HandShownOffset - FVector(0.0f, 0.0f, HandHiddenDrop));
 
+	HeldHandRoot = CreateDefaultSubobject<USceneComponent>(TEXT("HeldHandRoot"));
+	HeldHandRoot->SetupAttachment(YawPivot);
+	HeldHandRoot->SetRelativeLocation(FVector(30.0f, 0.0f, 95.0f));
+	HeldHandRoot->SetRelativeScale3D(FVector(1.5f));
+
 	// Top-left corner of the view, in front of the camera. Owner-only so the opponent never sees it.
 	StatusText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("StatusText"));
 	StatusText->SetupAttachment(Camera);
@@ -124,8 +129,10 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// The other player's pawn: mirror their hand with card backs.
 	if (!IsLocallyControlled())
 	{
+		UpdateHeldHand(DeltaSeconds);
 		return;
 	}
 
@@ -171,7 +178,113 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 		}
 	}
 
+	SendHandPose(DeltaSeconds);
 	UpdateStatusText();
+}
+
+void ASeatedPawn::SendHandPose(float DeltaSeconds)
+{
+	FHandPose Pose;
+	Pose.bHandUp = HandProgress > 0.5f;
+	Pose.DraggedIndex = DraggedCard ? HandCards.IndexOfByKey(DraggedCard) : INDEX_NONE;
+	Pose.HoveredIndex = HoveredCard && HoveredCard != DraggedCard ? HandCards.IndexOfByKey(HoveredCard) : INDEX_NONE;
+	Pose.DragLocation = FVector2D(DragLocation.Y, DragLocation.Z);
+
+	for (int32 Index = 0; Index < HandCards.Num() && Index < 32; ++Index)
+	{
+		if (HandCards[Index] && MulliganMarked.Contains(HandCards[Index]->InstanceId))
+		{
+			Pose.MarkedMask |= 1 << Index;
+		}
+	}
+
+	// Send changes at most 20 times a second, and repeat now and then in case an update was dropped.
+	PoseSendTimer -= DeltaSeconds;
+
+	if (PoseSendTimer > 0.0f || (Pose.Equals(LastSentPose) && PoseSendTimer > -0.5f))
+	{
+		return;
+	}
+
+	LastSentPose = Pose;
+	PoseSendTimer = 0.05f;
+	ServerSetHandPose(Pose);
+}
+
+void ASeatedPawn::ServerSetHandPose_Implementation(const FHandPose& NewPose)
+{
+	HandPose = NewPose;
+}
+
+void ASeatedPawn::UpdateHeldHand(float DeltaSeconds)
+{
+	// Match the number of backs to the number of cards in the opponent's hand.
+	while (HeldCards.Num() > HandCount)
+	{
+		if (ACardActor* Card = HeldCards.Pop())
+		{
+			Card->Destroy();
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	while (HeldCards.Num() < HandCount && CardClass)
+	{
+		ACardActor* Card = GetWorld()->SpawnActor<ACardActor>(CardClass, HeldHandRoot->GetComponentTransform(), SpawnParams);
+
+		if (!Card)
+		{
+			break;
+		}
+
+		Card->ClearCard();
+		Card->AttachToComponent(HeldHandRoot, FAttachmentTransformRules::SnapToTargetIncludingScale);
+		Card->SetActorRelativeLocation(FVector(0.0f, 0.0f, -HeldHandLowerDistance));
+		HeldCards.Add(Card);
+	}
+
+	for (int32 Index = 0; Index < HeldCards.Num(); ++Index)
+	{
+		ACardActor* Card = HeldCards[Index];
+		const FTransform Target = GetHeldCardTransform(Index, HeldCards.Num());
+		const USceneComponent* CardRoot = Card->GetRootComponent();
+
+		Card->SetActorRelativeLocation(FMath::VInterpTo(CardRoot->GetRelativeLocation(), Target.GetLocation(), DeltaSeconds, HandCardMoveSpeed));
+		Card->SetActorRelativeRotation(FMath::RInterpTo(CardRoot->GetRelativeRotation(), Target.Rotator(), DeltaSeconds, HandCardMoveSpeed));
+	}
+}
+
+FTransform ASeatedPawn::GetHeldCardTransform(int32 Index, int32 Count) const
+{
+	// Same layout as the owner's own hand (HeldHandRoot faces the same way their camera does),
+	// so the backs move exactly like the cards the owner is looking at.
+	const float FromMiddle = Index - (Count - 1) * 0.5f;
+	const float SlotY = FromMiddle * HandCardSpacing;
+	const float Lowered = HandPose.bHandUp ? 0.0f : -HeldHandLowerDistance;
+
+	if (Index == HandPose.DraggedIndex)
+	{
+		return FTransform(FRotator::ZeroRotator, FVector(-DragForward, HandPose.DragLocation.X, HandPose.DragLocation.Y));
+	}
+
+	if (Index == HandPose.HoveredIndex)
+	{
+		return FTransform(FRotator::ZeroRotator, FVector(-HoverForward * 0.5f, SlotY, HoverRaise + Lowered));
+	}
+
+	FVector Location(-Index * ACardActor::CardThickness * 1.5f, SlotY, -FMath::Square(FromMiddle) * HandArcDrop + Lowered);
+	FRotator Rotation(0.0f, 0.0f, FromMiddle * HandFanAngle);
+
+	if (Index < 32 && (HandPose.MarkedMask & (1 << Index)))
+	{
+		Rotation.Yaw = 180.0f;
+		Location.Z -= 2.0f;
+	}
+
+	return FTransform(Rotation, Location);
 }
 
 void ASeatedPawn::UpdateStatusText()
@@ -200,6 +313,11 @@ void ASeatedPawn::UpdateStatusText()
 	else
 	{
 		Status = IsMyTurn() ? TEXT("Your turn (E = end turn)") : TEXT("Opponent's turn");
+	}
+
+	if (CardGameState && CardGameState->GetTimeRemaining() > 0.0f && !CardGameState->IsMatchOver())
+	{
+		Status += FString::Printf(TEXT("  %ds"), FMath::CeilToInt(CardGameState->GetTimeRemaining()));
 	}
 
 	Status += FString::Printf(TEXT("\nMana %d/%d   Deck %d   Health %d"), Mana, MaxMana, DeckCount, Health);
@@ -325,7 +443,12 @@ void ASeatedPawn::ConfirmMulligan()
 
 void ASeatedPawn::ServerConfirmMulligan_Implementation(const TArray<int32>& ReplaceInstanceIds)
 {
-	if (!IsMulliganPhase())
+	ApplyMulligan(ReplaceInstanceIds);
+}
+
+void ASeatedPawn::ApplyMulligan(const TArray<int32>& ReplaceInstanceIds)
+{
+	if (!HasAuthority() || !IsMulliganPhase())
 	{
 		return;
 	}
@@ -394,8 +517,17 @@ void ASeatedPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 	}
 
+	for (ACardActor* Card : HeldCards)
+	{
+		if (Card)
+		{
+			Card->Destroy();
+		}
+	}
+
 	HandCards.Empty();
 	PendingPlayCards.Empty();
+	HeldCards.Empty();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -469,6 +601,12 @@ void ASeatedPawn::OnRep_Hand()
 
 void ASeatedPawn::SyncHandVisuals()
 {
+	// Every hand change on the server ends up here, so keep the public card count in step.
+	if (HasAuthority())
+	{
+		HandCount = Hand.Num();
+	}
+
 	// Only the owning player shows their hand. On the server that means the host's own pawn.
 	if (HasAuthority() && !IsLocallyControlled())
 	{
@@ -1041,4 +1179,8 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ASeatedPawn, Mana);
 	DOREPLIFETIME(ASeatedPawn, MaxMana);
 	DOREPLIFETIME(ASeatedPawn, bMulliganConfirmed);
+	DOREPLIFETIME(ASeatedPawn, HandCount);
+
+	// The owner already sees their real hand.
+	DOREPLIFETIME_CONDITION(ASeatedPawn, HandPose, COND_SkipOwner);
 }

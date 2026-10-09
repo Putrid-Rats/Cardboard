@@ -35,6 +35,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float CoinFlipDuration = 3.0f;
 
+	// Time to pick mulligan cards. When it runs out, players who haven't confirmed keep their hand.
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	float MulliganDuration = 30.0f;
+
+	// Length of a turn. When it runs out, the turn ends by itself.
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	float TurnDuration = 30.0f;
+
 	// Cards each player starts with (the second player also gets The Coin).
 	UPROPERTY(EditDefaultsOnly, Category = "Match", meta = (ClampMin = 0))
 	int32 OpeningHandSize = 3;
@@ -72,6 +80,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Match")
 	int32 GetWinningSeat() const { return WinningSeat; }
 
+	// Seconds left in the coin flip, mulligan or current turn (0 when nothing is timed).
+	UFUNCTION(BlueprintPure, Category = "Match")
+	float GetTimeRemaining() const;
+
 	// Server only. Starts the match once both seats have a player; does nothing otherwise.
 	void TryStartMatch();
 
@@ -107,7 +119,12 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_WinningSeat)
 	int32 WinningSeat = INDEX_NONE;
 
-	FTimerHandle MulliganTimer;
+	// Server world time when the current timed phase ends; clients compare it with the synced server time.
+	UPROPERTY(Replicated)
+	float PhaseEndServerTime = 0.0f;
+
+	// Coin flip -> mulligan, mulligan timeout, turn timeout. Only one runs at a time.
+	FTimerHandle PhaseTimer;
 
 	UFUNCTION()
 	void OnRep_Phase();
@@ -122,7 +139,10 @@ private:
 	void OnRep_WinningSeat();
 
 	void SetPhase(EMatchPhase NewPhase);
+	void SetPhaseTimer(void (ACardGameState::*Callback)(), float Duration);
 	void StartMulligan();
+	void OnMulliganTimeout();
+	void OnTurnTimeout();
 	void StartTurn(int32 Seat);
 	ASeatedPawn* FindSeatedPawn(int32 Seat) const;
 };

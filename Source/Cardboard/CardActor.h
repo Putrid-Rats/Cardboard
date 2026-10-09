@@ -49,6 +49,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Card")
 	void SetCard(FName InCardId);
 
+	// Blank card: no texts. Used for the opponent's hand, whose cards this machine doesn't know.
+	UFUNCTION(BlueprintCallable, Category = "Card")
+	void ClearCard();
+
 	UFUNCTION(BlueprintPure, Category = "Card")
 	FName GetCardId() const { return CardId; }
 
