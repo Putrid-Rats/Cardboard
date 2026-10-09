@@ -160,7 +160,14 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 	{
 		if (bInTableView && PlayerController->WasInputKeyJustPressed(EKeys::E))
 		{
-			EndTurn();
+			if (IsMulliganPhase())
+			{
+				ConfirmMulligan();
+			}
+			else
+			{
+				EndTurn();
+			}
 		}
 	}
 
@@ -180,9 +187,15 @@ void ASeatedPawn::UpdateStatusText()
 	{
 		Status = CardGameState->GetWinningSeat() == SeatIndex ? TEXT("You won!") : TEXT("You lost");
 	}
-	else if (CardGameState->GetCurrentTurnSeat() == INDEX_NONE)
+	else if (CardGameState->GetMatchPhase() == EMatchPhase::CoinFlip)
 	{
 		Status = CardGameState->GetFirstSeat() == SeatIndex ? TEXT("Coin: you go first") : TEXT("Coin: you go second");
+	}
+	else if (CardGameState->GetMatchPhase() == EMatchPhase::Mulligan)
+	{
+		Status = bMulliganConfirmed
+			? TEXT("Mulligan: waiting for the opponent...")
+			: TEXT("Mulligan: click cards to replace, E = confirm");
 	}
 	else
 	{
@@ -276,6 +289,79 @@ void ASeatedPawn::ServerEndTurn_Implementation()
 	if (ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>())
 	{
 		CardGameState->EndTurn(SeatIndex);
+	}
+}
+
+void ASeatedPawn::NotifyPhaseChanged(EMatchPhase NewPhase)
+{
+	if (NewPhase != EMatchPhase::Mulligan)
+	{
+		MulliganMarked.Reset();
+		return;
+	}
+
+	// Show the opening hand straight away.
+	if (IsLocallyControlled())
+	{
+		SetTableView(true);
+	}
+
+	OnMulliganStarted();
+}
+
+bool ASeatedPawn::IsMulliganPhase() const
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+	return CardGameState && CardGameState->GetMatchPhase() == EMatchPhase::Mulligan && !bMulliganConfirmed;
+}
+
+void ASeatedPawn::ConfirmMulligan()
+{
+	if (IsMulliganPhase())
+	{
+		ServerConfirmMulligan(MulliganMarked.Array());
+	}
+}
+
+void ASeatedPawn::ServerConfirmMulligan_Implementation(const TArray<int32>& ReplaceInstanceIds)
+{
+	if (!IsMulliganPhase())
+	{
+		return;
+	}
+
+	TArray<FName> Returned;
+
+	for (const int32 InstanceId : ReplaceInstanceIds)
+	{
+		const int32 HandIndex = Hand.IndexOfByPredicate([InstanceId](const FHandCard& HandCard)
+		{
+			return HandCard.InstanceId == InstanceId;
+		});
+
+		if (HandIndex != INDEX_NONE)
+		{
+			Returned.Add(Hand[HandIndex].CardId);
+			Hand.RemoveAt(HandIndex);
+		}
+	}
+
+	// Draw the replacements first, so the thrown-back cards can't come straight back.
+	DrawCards(Returned.Num());
+
+	for (const FName CardId : Returned)
+	{
+		Deck.Insert(CardId, FMath::RandRange(0, Deck.Num()));
+	}
+
+	DeckCount = Deck.Num();
+	SyncHandVisuals();
+
+	bMulliganConfirmed = true;
+
+	if (ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>())
+	{
+		CardGameState->NotifyMulliganConfirmed();
 	}
 }
 
@@ -551,11 +637,28 @@ void ASeatedPawn::UpdateHandInteraction()
 
 	HoveredCard = bCursorOnPlane ? GetHandCardAt(CursorLocal) : nullptr;
 
-	if (HoveredCard && PlayerController->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	if (!HoveredCard || !PlayerController->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 	{
-		DraggedCard = HoveredCard;
-		DragLocation = CursorLocal;
+		return;
 	}
+
+	// Mulligan: a click marks or unmarks the card for replacing instead of picking it up.
+	if (IsMulliganPhase())
+	{
+		if (MulliganMarked.Contains(HoveredCard->InstanceId))
+		{
+			MulliganMarked.Remove(HoveredCard->InstanceId);
+		}
+		else
+		{
+			MulliganMarked.Add(HoveredCard->InstanceId);
+		}
+
+		return;
+	}
+
+	DraggedCard = HoveredCard;
+	DragLocation = CursorLocal;
 }
 
 void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, bool bOverBoard)
@@ -697,13 +800,22 @@ FTransform ASeatedPawn::GetCardTargetTransform(int32 Index) const
 	}
 
 	// Resting in the fan. Each card a bit closer to the camera than the one on its left, so overlaps don't flicker.
-	const FVector Location(
+	FVector Location(
 		-Index * ACardActor::CardThickness * 1.5f,
 		SlotY,
 		-FMath::Square(FromMiddle) * HandArcDrop
 	);
 
-	return FTransform(FRotator(0.0f, 0.0f, FromMiddle * HandFanAngle), Location);
+	FRotator Rotation(0.0f, 0.0f, FromMiddle * HandFanAngle);
+
+	// Marked in the mulligan: turned face-down and slightly lowered.
+	if (MulliganMarked.Contains(Card->InstanceId))
+	{
+		Rotation.Yaw = 180.0f;
+		Location.Z -= 2.0f;
+	}
+
+	return FTransform(Rotation, Location);
 }
 
 bool ASeatedPawn::GetCursorOnHandPlane(const APlayerController& PlayerController, FVector& OutLocal) const
@@ -928,4 +1040,5 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ASeatedPawn, Health);
 	DOREPLIFETIME(ASeatedPawn, Mana);
 	DOREPLIFETIME(ASeatedPawn, MaxMana);
+	DOREPLIFETIME(ASeatedPawn, bMulliganConfirmed);
 }

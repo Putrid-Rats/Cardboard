@@ -8,10 +8,21 @@ class ASeatedPawn;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchEnded, int32, WinningSeat);
 
-// Match state shared by both players on L_Gameplay: coin flip, whose turn it is, who won.
+UENUM(BlueprintType)
+enum class EMatchPhase : uint8
+{
+	WaitingForPlayers,
+	CoinFlip,
+	Mulligan,
+	Playing,
+	Ended
+};
+
+// Match state shared by both players on L_Gameplay: phase, coin flip, whose turn it is, who won.
 // The match flow runs on the server:
-// both players seated -> coin flip, opening hands (second player also gets The Coin)
-// -> after CoinFlipDuration the first turn starts -> players end turns in alternation.
+// both players seated -> coin flip -> after CoinFlipDuration: opening hands, mulligan
+// -> both confirmed: the second player gets The Coin, the first turn starts
+// -> players end turns in alternation -> a player's health reaches 0.
 // Set as the GameState Class in GM_Gameplay_TCG.
 UCLASS()
 class CARDBOARD_API ACardGameState : public AGameStateBase
@@ -20,7 +31,7 @@ class CARDBOARD_API ACardGameState : public AGameStateBase
 
 public:
 
-	// How long the coin is shown before the first turn starts, in seconds.
+	// How long the coin is shown before the mulligan starts, in seconds.
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float CoinFlipDuration = 3.0f;
 
@@ -35,6 +46,9 @@ public:
 	// Fires on every machine when the match is decided.
 	UPROPERTY(BlueprintAssignable, Category = "Match")
 	FOnMatchEnded OnMatchEnded;
+
+	UFUNCTION(BlueprintPure, Category = "Match")
+	EMatchPhase GetMatchPhase() const { return Phase; }
 
 	UFUNCTION(BlueprintPure, Category = "Match")
 	bool IsMatchStarted() const { return FirstSeat != INDEX_NONE; }
@@ -61,6 +75,9 @@ public:
 	// Server only. Starts the match once both seats have a player; does nothing otherwise.
 	void TryStartMatch();
 
+	// Server only, called by a pawn after its mulligan. Starts the first turn once both players are done.
+	void NotifyMulliganConfirmed();
+
 	// Server only. Ignored unless it's that seat's turn.
 	void EndTurn(int32 Seat);
 
@@ -75,6 +92,9 @@ protected:
 
 private:
 
+	UPROPERTY(ReplicatedUsing = OnRep_Phase)
+	EMatchPhase Phase = EMatchPhase::WaitingForPlayers;
+
 	UPROPERTY(ReplicatedUsing = OnRep_FirstSeat)
 	int32 FirstSeat = INDEX_NONE;
 
@@ -87,7 +107,10 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_WinningSeat)
 	int32 WinningSeat = INDEX_NONE;
 
-	FTimerHandle FirstTurnTimer;
+	FTimerHandle MulliganTimer;
+
+	UFUNCTION()
+	void OnRep_Phase();
 
 	UFUNCTION()
 	void OnRep_FirstSeat();
@@ -98,7 +121,8 @@ private:
 	UFUNCTION()
 	void OnRep_WinningSeat();
 
-	void StartFirstTurn();
+	void SetPhase(EMatchPhase NewPhase);
+	void StartMulligan();
 	void StartTurn(int32 Seat);
 	ASeatedPawn* FindSeatedPawn(int32 Seat) const;
 };

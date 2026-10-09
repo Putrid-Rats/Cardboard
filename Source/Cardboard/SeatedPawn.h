@@ -11,6 +11,7 @@ class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
 class UTextRenderComponent;
+enum class EMatchPhase : uint8;
 
 // One card in a player's hand.
 USTRUCT(BlueprintType)
@@ -129,9 +130,22 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
 	void OnTurnStarted(bool bThisPlayersTurn);
 
+	// Local player, during the mulligan: replaces the marked cards (also the E key).
+	// Marked cards go back into the deck after the replacements are drawn.
+	UFUNCTION(BlueprintCallable, Category = "Seat|Turn")
+	void ConfirmMulligan();
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
+	bool IsMulliganConfirmed() const { return bMulliganConfirmed; }
+
+	// Every machine, on both pawns: the opening hands are dealt and the mulligan begins.
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
+	void OnMulliganStarted();
+
 	// Called by ACardGameState.
 	void NotifyCoinFlipped(int32 FirstSeat);
 	void NotifyTurnStarted(int32 TurnSeat);
+	void NotifyPhaseChanged(EMatchPhase NewPhase);
 
 	// Cards left in the deck. Visible to both players.
 	UFUNCTION(BlueprintPure, Category = "Seat|Hand")
@@ -310,6 +324,18 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerEndTurn();
+
+	UFUNCTION(Server, Reliable)
+	void ServerConfirmMulligan(const TArray<int32>& ReplaceInstanceIds);
+
+	// Replicated to everyone, so the other player can see "waiting for opponent".
+	UPROPERTY(Replicated)
+	bool bMulliganConfirmed = false;
+
+	// Local: hand cards (InstanceId) the player clicked to replace.
+	TSet<int32> MulliganMarked;
+
+	bool IsMulliganPhase() const;
 
 	// Mana left this turn (The Coin can push it above MaxMana).
 	UPROPERTY(Replicated)

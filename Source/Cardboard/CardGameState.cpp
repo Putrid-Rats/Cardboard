@@ -23,17 +23,41 @@ void ACardGameState::TryStartMatch()
 
 	// Coin flip.
 	FirstSeat = FMath::RandRange(0, 1);
+	OnRep_FirstSeat();
+	SetPhase(EMatchPhase::CoinFlip);
 
-	ASeatedPawn* FirstPlayer = FirstSeat == 0 ? Seat0 : Seat1;
-	ASeatedPawn* SecondPlayer = FirstSeat == 0 ? Seat1 : Seat0;
+	GetWorldTimerManager().SetTimer(MulliganTimer, this, &ACardGameState::StartMulligan, CoinFlipDuration, false);
+}
 
-	FirstPlayer->DrawCards(OpeningHandSize);
-	SecondPlayer->DrawCards(OpeningHandSize);
+void ACardGameState::StartMulligan()
+{
+	for (int32 Seat = 0; Seat < 2; ++Seat)
+	{
+		if (ASeatedPawn* Pawn = FindSeatedPawn(Seat))
+		{
+			Pawn->DrawCards(OpeningHandSize);
+		}
+	}
+
+	SetPhase(EMatchPhase::Mulligan);
+}
+
+void ACardGameState::NotifyMulliganConfirmed()
+{
+	ASeatedPawn* FirstPlayer = FindSeatedPawn(FirstSeat);
+	ASeatedPawn* SecondPlayer = FindSeatedPawn(1 - FirstSeat);
+
+	if (Phase != EMatchPhase::Mulligan || !FirstPlayer || !SecondPlayer
+		|| !FirstPlayer->IsMulliganConfirmed() || !SecondPlayer->IsMulliganConfirmed())
+	{
+		return;
+	}
+
+	// Handed out after the mulligan, so it can't be thrown back.
 	SecondPlayer->AddCardToHand(UCardboardSettings::GetCoinCardId());
 
-	OnRep_FirstSeat();
-
-	GetWorldTimerManager().SetTimer(FirstTurnTimer, this, &ACardGameState::StartFirstTurn, CoinFlipDuration, false);
+	SetPhase(EMatchPhase::Playing);
+	StartTurn(FirstSeat);
 }
 
 void ACardGameState::EndTurn(int32 Seat)
@@ -54,15 +78,27 @@ void ACardGameState::EndMatch(int32 InWinningSeat)
 	}
 
 	WinningSeat = InWinningSeat;
-	GetWorldTimerManager().ClearTimer(FirstTurnTimer);
+	GetWorldTimerManager().ClearTimer(MulliganTimer);
 
 	// OnRep doesn't run on the server, and the listen server host needs the events too.
 	OnRep_WinningSeat();
+	SetPhase(EMatchPhase::Ended);
 }
 
-void ACardGameState::StartFirstTurn()
+void ACardGameState::SetPhase(EMatchPhase NewPhase)
 {
-	StartTurn(FirstSeat);
+	Phase = NewPhase;
+
+	// OnRep doesn't run on the server.
+	OnRep_Phase();
+}
+
+void ACardGameState::OnRep_Phase()
+{
+	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
+	{
+		It->NotifyPhaseChanged(Phase);
+	}
 }
 
 void ACardGameState::StartTurn(int32 Seat)
@@ -128,6 +164,7 @@ void ACardGameState::GetLifetimeReplicatedProps(
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	DOREPLIFETIME(ACardGameState, Phase);
 	DOREPLIFETIME(ACardGameState, FirstSeat);
 	DOREPLIFETIME(ACardGameState, CurrentTurnSeat);
 	DOREPLIFETIME(ACardGameState, TurnNumber);
