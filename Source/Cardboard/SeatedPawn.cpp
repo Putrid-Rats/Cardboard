@@ -4,6 +4,7 @@
 #include "Camera/CameraComponent.h"
 #include "CardActor.h"
 #include "CardboardSettings.h"
+#include "CardGameState.h"
 #include "CardTable.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -50,6 +51,58 @@ void ASeatedPawn::BeginPlay()
 		Table = *It;
 		break;
 	}
+
+	if (HasAuthority())
+	{
+		Health = MaxHealth;
+		OnRep_Health(0);
+	}
+}
+
+void ASeatedPawn::ApplyPlayerDamage(int32 Amount)
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (!HasAuthority() || Amount <= 0 || Health <= 0 || (CardGameState && CardGameState->IsMatchOver()))
+	{
+		return;
+	}
+
+	const int32 OldHealth = Health;
+	Health = FMath::Max(Health - Amount, 0);
+	OnRep_Health(OldHealth);
+
+	if (Health == 0)
+	{
+		if (ACardGameState* GameState = GetWorld()->GetGameState<ACardGameState>())
+		{
+			GameState->EndMatch(1 - SeatIndex);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: no CardGameState, set it as GameState Class in GM_Gameplay_TCG"));
+		}
+	}
+}
+
+void ASeatedPawn::OnRep_Health(int32 OldHealth)
+{
+	OnHealthChanged(Health, OldHealth);
+}
+
+void ASeatedPawn::NotifyMatchEnded(int32 WinningSeat)
+{
+	OnMatchEnded(SeatIndex == WinningSeat);
+}
+
+void ASeatedPawn::DebugDamage(int32 Amount)
+{
+	ServerDebugDamage(Amount);
+}
+
+void ASeatedPawn::ServerDebugDamage_Implementation(int32 Amount)
+{
+	ApplyPlayerDamage(Amount);
 }
 
 void ASeatedPawn::Tick(float DeltaSeconds)
@@ -748,4 +801,5 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	// Only the owner may know their hand; the deck size is public.
 	DOREPLIFETIME_CONDITION(ASeatedPawn, Hand, COND_OwnerOnly);
 	DOREPLIFETIME(ASeatedPawn, DeckCount);
+	DOREPLIFETIME(ASeatedPawn, Health);
 }

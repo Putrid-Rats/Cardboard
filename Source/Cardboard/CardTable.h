@@ -38,7 +38,7 @@ public:
 	TSubclassOf<ACardActor> CardClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Board", meta = (ClampMin = 1))
-	int32 MaxRowSize = 7;
+	int32 MaxRowSize = 6;
 
 	// Height of a card lying on the table, relative to the table actor (just above the table top).
 	UPROPERTY(EditDefaultsOnly, Category = "Board")

@@ -109,6 +109,37 @@ public:
 	UFUNCTION(Exec)
 	void DebugDrawCard();
 
+	UPROPERTY(EditDefaultsOnly, Category = "Seat|Health", meta = (ClampMin = 1))
+	int32 MaxHealth = 15;
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Health")
+	int32 GetHealth() const { return Health; }
+
+	// 1 = full bottle, 0 = empty. Drive the drink level with this.
+	UFUNCTION(BlueprintPure, Category = "Seat|Health")
+	float GetHealthFraction() const { return MaxHealth > 0 ? static_cast<float>(Health) / MaxHealth : 0.0f; }
+
+	// Server only. Reaching 0 ends the match with the opponent as the winner.
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Seat|Health")
+	void ApplyPlayerDamage(int32 Amount);
+
+	// Every machine, on this player's pawn: health went from OldHealth to NewHealth
+	// (the opponent takes a sip of this player's bottle). The first update after spawning has OldHealth 0.
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Health")
+	void OnHealthChanged(int32 NewHealth, int32 OldHealth);
+
+	// Every machine, on both pawns: the match is decided. bThisPlayerWon is about this pawn's player
+	// (the winner drinks the rest of the opponent's bottle and then finishes their own).
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Health")
+	void OnMatchEnded(bool bThisPlayerWon);
+
+	// Called by ACardGameState when a winner is set.
+	void NotifyMatchEnded(int32 WinningSeat);
+
+	// Testing only: type DebugDamage 3 in the console to take 3 damage yourself.
+	UFUNCTION(Exec)
+	void DebugDamage(int32 Amount);
+
 	// HandRoot position relative to the camera when the hand is up (X forward, Z up, in cm).
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand")
 	FVector HandShownOffset = FVector(25.0f, 0.0f, -10.0f);
@@ -241,6 +272,15 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerDebugDrawCard();
+
+	UFUNCTION(Server, Reliable)
+	void ServerDebugDamage(int32 Amount);
+
+	UPROPERTY(ReplicatedUsing = OnRep_Health)
+	int32 Health = 0;
+
+	UFUNCTION()
+	void OnRep_Health(int32 OldHealth);
 
 	UFUNCTION()
 	void OnRep_Hand();
