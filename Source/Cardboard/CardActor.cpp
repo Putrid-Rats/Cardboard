@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
 ACardActor::ACardActor()
@@ -41,6 +42,64 @@ ACardActor::ACardActor()
 	TraitText = CreateCardText(TEXT("TraitText"), 0.0f, 0.0f, 0.5f, FColor(90, 40, 130));
 	AttackText = CreateCardText(TEXT("AttackText"), -Right, -Top, 1.0f, FColor(200, 120, 0));
 	HealthText = CreateCardText(TEXT("HealthText"), Right, -Top, 1.0f, FColor(200, 20, 20));
+
+	// Behind the card (on the table: underneath it), sticking out as a border.
+	TraitFrame = CreateFrame(TEXT("TraitFrame"), 0.6f, CardThickness * 0.75f);
+	ReadyFrame = CreateFrame(TEXT("ReadyFrame"), 1.2f, CardThickness * 1.25f);
+}
+
+UStaticMeshComponent* ACardActor::CreateFrame(FName Name, float Margin, float BehindOffset)
+{
+	UStaticMeshComponent* Frame = CreateDefaultSubobject<UStaticMeshComponent>(Name);
+	Frame->SetupAttachment(RootComponent);
+	Frame->SetStaticMesh(CardMesh->GetStaticMesh());
+	Frame->SetRelativeLocation(FVector(BehindOffset, 0.0f, 0.0f));
+	Frame->SetRelativeScale3D(FVector(CardThickness * 0.5f, CardWidth + Margin, CardHeight + Margin) / 100.0f);
+	Frame->SetCastShadow(false);
+	Frame->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Frame->SetVisibility(false);
+
+	return Frame;
+}
+
+void ACardActor::SetFrameColor(UStaticMeshComponent* Frame, const FLinearColor& Color)
+{
+	// The engine's basic shape material has a "Color" parameter.
+	if (UMaterialInstanceDynamic* Material = Frame->CreateDynamicMaterialInstance(0))
+	{
+		Material->SetVectorParameterValue(TEXT("Color"), Color);
+	}
+}
+
+void ACardActor::SetBoardState(int32 Attack, int32 Health, ECardTrait Trait, bool bStealthed, bool bCanAttack)
+{
+	AttackText->SetText(FText::AsNumber(Attack));
+	HealthText->SetText(FText::AsNumber(Health));
+
+	const bool bTaunting = Trait == ECardTrait::Taunt && !bStealthed;
+
+	TraitFrame->SetVisibility(bTaunting || bStealthed);
+
+	if (bTaunting)
+	{
+		SetFrameColor(TraitFrame, FLinearColor(0.9f, 0.65f, 0.1f));
+	}
+	else if (bStealthed)
+	{
+		SetFrameColor(TraitFrame, FLinearColor(0.35f, 0.1f, 0.5f));
+	}
+
+	ReadyFrame->SetVisibility(bCanAttack);
+	SetFrameColor(ReadyFrame, FLinearColor(0.1f, 0.8f, 0.2f));
+
+	if (DisplayedHealth >= 0 && Health < DisplayedHealth)
+	{
+		OnDamaged(DisplayedHealth - Health);
+	}
+
+	DisplayedHealth = Health;
+
+	OnBoardStateChanged(bTaunting, bStealthed, Trait == ECardTrait::Fly, bCanAttack);
 }
 
 UTextRenderComponent* ACardActor::CreateCardText(FName Name, float Horizontal, float Vertical, float Size, FColor Color)

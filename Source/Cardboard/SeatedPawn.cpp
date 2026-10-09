@@ -6,9 +6,11 @@
 #include "CardboardSettings.h"
 #include "CardDefinition.h"
 #include "CardGameState.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "CardTable.h"
 #include "Engine/DataTable.h"
@@ -63,6 +65,20 @@ ASeatedPawn::ASeatedPawn()
 	BottlePoint = CreateDefaultSubobject<USceneComponent>(TEXT("BottlePoint"));
 	BottlePoint->SetupAttachment(RootComponent);
 	BottlePoint->SetRelativeLocation(FVector(55.0f, 35.0f, 77.5f));
+
+	// Instances are placed in world space, so the component itself ignores the pawn's transform.
+	TargetArrow = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("TargetArrow"));
+	TargetArrow->SetupAttachment(RootComponent);
+	TargetArrow->SetUsingAbsoluteLocation(true);
+	TargetArrow->SetUsingAbsoluteRotation(true);
+	TargetArrow->SetUsingAbsoluteScale(true);
+	TargetArrow->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TargetArrow->SetCastShadow(false);
+
+	if (CubeMesh.Succeeded())
+	{
+		TargetArrow->SetStaticMesh(CubeMesh.Object);
+	}
 
 	HeldHandRoot = CreateDefaultSubobject<USceneComponent>(TEXT("HeldHandRoot"));
 	HeldHandRoot->SetupAttachment(YawPivot);
@@ -182,6 +198,17 @@ void ASeatedPawn::DebugDamage(int32 Amount)
 void ASeatedPawn::ServerDebugDamage_Implementation(int32 Amount)
 {
 	ApplyPlayerDamage(Amount);
+}
+
+void ASeatedPawn::DebugMana(int32 Amount)
+{
+	ServerDebugMana(Amount);
+}
+
+void ASeatedPawn::ServerDebugMana_Implementation(int32 Amount)
+{
+	MaxMana = FMath::Max(Amount, 0);
+	Mana = MaxMana;
 }
 
 void ASeatedPawn::Tick(float DeltaSeconds)
@@ -779,12 +806,20 @@ void ASeatedPawn::UpdateHandInteraction()
 	{
 		HoveredCard = nullptr;
 		DraggedCard = nullptr;
+		EndAttackTargeting();
 
 		if (PlayerController)
 		{
 			UpdateBoardPreview(*PlayerController, false);
 		}
 
+		return;
+	}
+
+	if (AttackingCardId != INDEX_NONE)
+	{
+		HoveredCard = nullptr;
+		UpdateAttackTargeting(*PlayerController);
 		return;
 	}
 
@@ -834,8 +869,15 @@ void ASeatedPawn::UpdateHandInteraction()
 
 	HoveredCard = bCursorOnPlane ? GetHandCardAt(CursorLocal) : nullptr;
 
-	if (!HoveredCard || !PlayerController->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	if (!PlayerController->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 	{
+		return;
+	}
+
+	// Not on a hand card: maybe on one of this player's table cards, to aim an attack.
+	if (!HoveredCard)
+	{
+		TryBeginAttack(*PlayerController);
 		return;
 	}
 
@@ -856,6 +898,145 @@ void ASeatedPawn::UpdateHandInteraction()
 
 	DraggedCard = HoveredCard;
 	DragLocation = CursorLocal;
+}
+
+bool ASeatedPawn::TryBeginAttack(APlayerController& PlayerController)
+{
+	FHitResult Hit;
+
+	if (!Table || !IsMyTurn() || !PlayerController.GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+	{
+		return false;
+	}
+
+	const ACardActor* Card = Cast<ACardActor>(Hit.GetActor());
+	int32 CardSeat;
+	FBoardCard BoardCard;
+
+	if (!Card || Card->GetOwner() != Table || !Table->FindBoardCard(Card->InstanceId, CardSeat, BoardCard)
+		|| CardSeat != SeatIndex || !BoardCard.bCanAttack)
+	{
+		return false;
+	}
+
+	AttackingCardId = Card->InstanceId;
+	return true;
+}
+
+void ASeatedPawn::UpdateAttackTargeting(APlayerController& PlayerController)
+{
+	const ACardActor* Attacker = Table ? Table->GetBoardCardActor(AttackingCardId) : nullptr;
+
+	// The card died or the turn ended while aiming.
+	if (!Attacker || !IsMyTurn())
+	{
+		EndAttackTargeting();
+		return;
+	}
+
+	AttackTargetId = INDEX_NONE;
+	bool bHasTarget = false;
+	FVector ArrowEnd = FVector::ZeroVector;
+	FHitResult Hit;
+
+	if (PlayerController.GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+	{
+		const ACardActor* Card = Cast<ACardActor>(Hit.GetActor());
+		int32 CardSeat;
+		FBoardCard BoardCard;
+
+		if (Card && Card->GetOwner() == Table && Table->FindBoardCard(Card->InstanceId, CardSeat, BoardCard) && CardSeat != SeatIndex)
+		{
+			AttackTargetId = Card->InstanceId;
+			ArrowEnd = Card->GetActorLocation();
+			bHasTarget = true;
+		}
+		else if (Hit.GetActor() && Hit.GetActor() != this && Hit.GetActor()->IsA<ASeatedPawn>())
+		{
+			AttackTargetId = ACardTable::PlayerTarget;
+			ArrowEnd = Hit.ImpactPoint;
+			bHasTarget = true;
+		}
+	}
+
+	if (!bHasTarget)
+	{
+		// Nothing hit directly: aim at the table, where the opponent's side behind their row means the opponent.
+		FVector RayOrigin;
+		FVector RayDirection;
+		PlayerController.DeprojectMousePositionToWorld(RayOrigin, RayDirection);
+
+		if (Table->GetTablePoint(RayOrigin, RayDirection, ArrowEnd))
+		{
+			if (Table->IsInPlayerArea(1 - SeatIndex, ArrowEnd))
+			{
+				AttackTargetId = ACardTable::PlayerTarget;
+				bHasTarget = true;
+			}
+		}
+		else
+		{
+			ArrowEnd = RayOrigin + RayDirection * 150.0f;
+		}
+	}
+
+	bAttackTargetValid = bHasTarget && Table->CanAttack(SeatIndex, AttackingCardId, AttackTargetId);
+	DrawTargetArrow(Attacker->GetActorLocation(), ArrowEnd, bAttackTargetValid);
+
+	// Released: attack if the target is allowed, otherwise just put the arrow away.
+	if (!PlayerController.IsInputKeyDown(EKeys::LeftMouseButton))
+	{
+		if (bAttackTargetValid)
+		{
+			ServerAttack(AttackingCardId, AttackTargetId);
+		}
+
+		EndAttackTargeting();
+	}
+}
+
+void ASeatedPawn::EndAttackTargeting()
+{
+	AttackingCardId = INDEX_NONE;
+	AttackTargetId = INDEX_NONE;
+	bAttackTargetValid = false;
+	TargetArrow->ClearInstances();
+}
+
+void ASeatedPawn::DrawTargetArrow(const FVector& Start, const FVector& End, bool bValid)
+{
+	TargetArrow->ClearInstances();
+
+	// A curve from the card up and over to the target (quadratic Bezier), drawn as dots with a longer head.
+	const FVector Up = FVector::UpVector;
+	const FVector From = Start + Up * 1.0f;
+	const FVector To = End + Up * 0.5f;
+	const FVector Control = (From + To) * 0.5f + Up * FMath::Max(FVector::Dist(From, To) * 0.35f, 5.0f);
+	const int32 DotCount = 16;
+
+	for (int32 Dot = 1; Dot <= DotCount; ++Dot)
+	{
+		const float T = static_cast<float>(Dot) / DotCount;
+		const FVector Point = FMath::Square(1.0f - T) * From + 2.0f * (1.0f - T) * T * Control + FMath::Square(T) * To;
+		const FVector Tangent = 2.0f * (1.0f - T) * (Control - From) + 2.0f * T * (To - Control);
+		const bool bHead = Dot == DotCount;
+		const FVector Scale = bHead ? FVector(2.5f, 1.2f, 0.5f) / 100.0f : FVector(0.8f) / 100.0f;
+
+		TargetArrow->AddInstance(FTransform(FRotationMatrix::MakeFromX(Tangent).Rotator(), Point, Scale), true);
+	}
+
+	if (UMaterialInstanceDynamic* Material = TargetArrow->CreateDynamicMaterialInstance(0))
+	{
+		Material->SetVectorParameterValue(TEXT("Color"), bValid ? FLinearColor(1.0f, 0.35f, 0.05f) : FLinearColor(0.35f, 0.35f, 0.35f));
+	}
+}
+
+void ASeatedPawn::ServerAttack_Implementation(int32 AttackerId, int32 TargetId)
+{
+	if (Table && IsMyTurn())
+	{
+		Table->Attack(SeatIndex, AttackerId, TargetId);
+	}
 }
 
 void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, bool bOverBoard)

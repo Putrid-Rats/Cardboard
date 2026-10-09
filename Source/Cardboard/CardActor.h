@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CardDefinition.h"
 #include "GameFramework/Actor.h"
 #include "CardActor.generated.h"
 
@@ -59,9 +60,34 @@ public:
 	// Which hand or board entry this visual shows (FHandCard / FBoardCard InstanceId).
 	int32 InstanceId = 0;
 
+	// Placeholder trait marker under a board card: gold for Taunt, purple while Stealthed.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
+	TObjectPtr<UStaticMeshComponent> TraitFrame;
+
+	// Placeholder green outline while the card can attack this turn.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
+	TObjectPtr<UStaticMeshComponent> ReadyFrame;
+
+	// Board cards: current stats and combat state, from the table.
+	void SetBoardState(int32 Attack, int32 Health, ECardTrait Trait, bool bStealthed, bool bCanAttack);
+
+	// Board cards, on every machine, whenever the state changes. Hook your Taunt/Stealth/Fly effects here
+	// (and hide TraitFrame / ReadyFrame if you replace them).
+	UFUNCTION(BlueprintImplementableEvent, Category = "Card")
+	void OnBoardStateChanged(bool bTaunting, bool bStealthed, bool bFlying, bool bCanAttack);
+
+	// Board cards, on every machine: the card just lost Damage health (it may be about to be removed).
+	UFUNCTION(BlueprintImplementableEvent, Category = "Card")
+	void OnDamaged(int32 Damage);
+
 private:
 
 	FName CardId;
 
+	// Health shown last time, to tell when damage was taken. -1 = not on the board yet.
+	int32 DisplayedHealth = -1;
+
 	UTextRenderComponent* CreateCardText(FName Name, float Horizontal, float Vertical, float Size, FColor Color);
+	UStaticMeshComponent* CreateFrame(FName Name, float Margin, float BehindOffset);
+	static void SetFrameColor(UStaticMeshComponent* Frame, const FLinearColor& Color);
 };

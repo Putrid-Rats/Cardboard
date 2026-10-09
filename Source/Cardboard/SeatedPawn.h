@@ -10,6 +10,7 @@ class APlayerController;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class UInstancedStaticMeshComponent;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 enum class EMatchPhase : uint8;
@@ -117,6 +118,11 @@ public:
 	// On the table to the player's right. Attach the bottle here in BP_SeatedPawn.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Table")
 	TObjectPtr<USceneComponent> BottlePoint;
+
+	// Placeholder attack arrow: a dotted arc from the attacking card to the mouse, drawn in world space.
+	// Orange when the target can be attacked, grey when it can't.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Table")
+	TObjectPtr<UInstancedStaticMeshComponent> TargetArrow;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Input")
 	TObjectPtr<UInputMappingContext> SeatMappingContext;
@@ -249,6 +255,10 @@ public:
 	UFUNCTION(Exec)
 	void DebugDamage(int32 Amount);
 
+	// Testing only: type DebugMana 10 in the console to set your mana (and max mana) to 10.
+	UFUNCTION(Exec)
+	void DebugMana(int32 Amount);
+
 	// HandRoot position relative to the camera when the hand is up (X forward, Z up, in cm).
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand")
 	FVector HandShownOffset = FVector(25.0f, 0.0f, -10.0f);
@@ -377,6 +387,22 @@ private:
 	// Where the dragged card would land in this seat's row, or INDEX_NONE while it's over the hand.
 	int32 BoardInsertIndex = INDEX_NONE;
 
+	// Attack targeting: the board card being aimed with (held left mouse button), or INDEX_NONE.
+	int32 AttackingCardId = INDEX_NONE;
+
+	// What's under the mouse while aiming: a board card, or ACardTable::PlayerTarget.
+	int32 AttackTargetId = INDEX_NONE;
+	bool bAttackTargetValid = false;
+
+	UFUNCTION(Server, Reliable)
+	void ServerAttack(int32 AttackerId, int32 TargetId);
+
+	// Starts aiming if the mouse is on one of this player's table cards that may attack.
+	bool TryBeginAttack(APlayerController& PlayerController);
+	void UpdateAttackTargeting(APlayerController& PlayerController);
+	void EndAttackTargeting();
+	void DrawTargetArrow(const FVector& Start, const FVector& End, bool bValid);
+
 	UPROPERTY(Transient)
 	TObjectPtr<ACardTable> Table;
 
@@ -393,6 +419,9 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerDebugDamage(int32 Amount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerDebugMana(int32 Amount);
 
 	UFUNCTION(Server, Reliable)
 	void ServerEndTurn();

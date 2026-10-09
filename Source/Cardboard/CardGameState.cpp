@@ -1,6 +1,7 @@
 #include "CardGameState.h"
 
 #include "CardboardSettings.h"
+#include "CardTable.h"
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "SeatedPawn.h"
@@ -146,6 +147,11 @@ void ACardGameState::StartTurn(int32 Seat)
 	if (ASeatedPawn* Pawn = FindSeatedPawn(Seat))
 	{
 		Pawn->BeginTurn(MaxManaCap);
+	}
+
+	for (TActorIterator<ACardTable> It(GetWorld()); It; ++It)
+	{
+		It->ReadyCardsForTurn(Seat);
 	}
 
 	OnRep_CurrentTurnSeat();
