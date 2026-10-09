@@ -10,6 +10,7 @@ class APlayerController;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class UStaticMeshComponent;
 class UTextRenderComponent;
 enum class EMatchPhase : uint8;
 
@@ -105,6 +106,18 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
 	TObjectPtr<USceneComponent> HeldHandRoot;
 
+	// On the table to the player's left. Child of the seat, so it stays put when the player looks around.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Table")
+	TObjectPtr<USceneComponent> DeckRoot;
+
+	// The deck pile: grows/shrinks with the number of cards left, hidden when empty. Both players see it.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Table")
+	TObjectPtr<UStaticMeshComponent> DeckMesh;
+
+	// On the table to the player's right. Attach the bottle here in BP_SeatedPawn.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Table")
+	TObjectPtr<USceneComponent> BottlePoint;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Input")
 	TObjectPtr<UInputMappingContext> SeatMappingContext;
 
@@ -192,6 +205,14 @@ public:
 	// Cards left in the deck. Visible to both players.
 	UFUNCTION(BlueprintPure, Category = "Seat|Hand")
 	int32 GetDeckCount() const { return DeckCount; }
+
+	// Every machine, on this player's pawn: the deck got smaller or bigger (draw, mulligan).
+	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Hand")
+	void OnDeckCountChanged(int32 NewDeckCount);
+
+	// The pawn in the other seat, or null if nobody sits there. E.g. to make the opponent's cutout drink.
+	UFUNCTION(BlueprintPure, Category = "Seat")
+	ASeatedPawn* GetOpponentPawn() const;
 
 	// Testing only: type DebugDrawCard in the console (`) to draw one card.
 	UFUNCTION(Exec)
@@ -317,8 +338,13 @@ private:
 
 	bool bDeckBuilt = false;
 
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_DeckCount)
 	int32 DeckCount = 0;
+
+	UFUNCTION()
+	void OnRep_DeckCount();
+
+	void SetDeckCount(int32 NewDeckCount);
 
 	// The real hand. Replicates to the owning player only, so the opponent never learns it.
 	UPROPERTY(ReplicatedUsing = OnRep_Hand)

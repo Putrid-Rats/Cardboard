@@ -6,7 +6,10 @@
 #include "CardboardSettings.h"
 #include "CardDefinition.h"
 #include "CardGameState.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Engine/StaticMesh.h"
+#include "UObject/ConstructorHelpers.h"
 #include "CardTable.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -39,6 +42,27 @@ ASeatedPawn::ASeatedPawn()
 	HandRoot = CreateDefaultSubobject<USceneComponent>(TEXT("HandRoot"));
 	HandRoot->SetupAttachment(Camera);
 	HandRoot->SetRelativeLocation(HandShownOffset - FVector(0.0f, 0.0f, HandHiddenDrop));
+
+	// Table spots relative to the seat: the table edge is ~40 cm in front, the top ~77.5 cm up.
+	DeckRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DeckRoot"));
+	DeckRoot->SetupAttachment(RootComponent);
+	DeckRoot->SetRelativeLocation(FVector(55.0f, -35.0f, 77.5f));
+
+	DeckMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DeckMesh"));
+	DeckMesh->SetupAttachment(DeckRoot);
+	DeckMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DeckMesh->SetVisibility(false);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+
+	if (CubeMesh.Succeeded())
+	{
+		DeckMesh->SetStaticMesh(CubeMesh.Object);
+	}
+
+	BottlePoint = CreateDefaultSubobject<USceneComponent>(TEXT("BottlePoint"));
+	BottlePoint->SetupAttachment(RootComponent);
+	BottlePoint->SetRelativeLocation(FVector(55.0f, 35.0f, 77.5f));
 
 	HeldHandRoot = CreateDefaultSubobject<USceneComponent>(TEXT("HeldHandRoot"));
 	HeldHandRoot->SetupAttachment(YawPivot);
@@ -108,6 +132,41 @@ void ASeatedPawn::ApplyPlayerDamage(int32 Amount)
 void ASeatedPawn::OnRep_Health(int32 OldHealth)
 {
 	OnHealthChanged(Health, OldHealth);
+}
+
+void ASeatedPawn::SetDeckCount(int32 NewDeckCount)
+{
+	DeckCount = NewDeckCount;
+
+	// OnRep doesn't run on the server.
+	OnRep_DeckCount();
+}
+
+void ASeatedPawn::OnRep_DeckCount()
+{
+	// A flat pile of cards: as tall as the cards left, lying with the top edge pointing away from the player.
+	const float PileHeight = DeckCount * ACardActor::CardThickness;
+
+	DeckMesh->SetVisibility(DeckCount > 0);
+	DeckMesh->SetRelativeScale3D(FVector(ACardActor::CardHeight, ACardActor::CardWidth, FMath::Max(PileHeight, 0.01f)) / 100.0f);
+
+	// The cube's pivot is its centre, so lift it by half its height to sit on the table.
+	DeckMesh->SetRelativeLocation(FVector(0.0f, 0.0f, PileHeight * 0.5f));
+
+	OnDeckCountChanged(DeckCount);
+}
+
+ASeatedPawn* ASeatedPawn::GetOpponentPawn() const
+{
+	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
+	{
+		if (*It != this && It->SeatIndex != SeatIndex)
+		{
+			return *It;
+		}
+	}
+
+	return nullptr;
 }
 
 void ASeatedPawn::NotifyMatchEnded(int32 WinningSeat)
@@ -477,7 +536,7 @@ void ASeatedPawn::ApplyMulligan(const TArray<int32>& ReplaceInstanceIds)
 		Deck.Insert(CardId, FMath::RandRange(0, Deck.Num()));
 	}
 
-	DeckCount = Deck.Num();
+	SetDeckCount(Deck.Num());
 	SyncHandVisuals();
 
 	bMulliganConfirmed = true;
@@ -549,7 +608,7 @@ void ASeatedPawn::BuildDeck()
 		Deck.Swap(Index, FMath::RandRange(0, Index));
 	}
 
-	DeckCount = Deck.Num();
+	SetDeckCount(Deck.Num());
 }
 
 void ASeatedPawn::DrawCards(int32 Count)
@@ -564,7 +623,7 @@ void ASeatedPawn::DrawCards(int32 Count)
 		AddCardToHand(Deck.Pop());
 	}
 
-	DeckCount = Deck.Num();
+	SetDeckCount(Deck.Num());
 }
 
 void ASeatedPawn::AddCardToHand(FName CardId)
