@@ -97,12 +97,28 @@ The "Video memory has been exhausted" message in this setup is just the editor +
 - Random table yaw: Set Actor Rotation (random yaw 0..360) runs on the server before the first spawn. BP_Table has Replicates and Replicate Movement on. **Confirmed working.**
 - Both players currently use the same cutout. Per-seat Danny/Fiona cutouts are postponed.
 
+**2026-10-09 (later):**
+
+- `ACardActor` (C++) is one card. The placeholder is the engine cube scaled to 6.35 × 8.89 cm (2.5″ × 3.5″), and only Visibility traces hit it.
+- Hand, in `ASeatedPawn`, **confirmed working**:
+  - The local player gets up to 6 placeholder cards (`MaxHandSize`). They're attached to `HandRoot`, a child of the camera, so in table view they always rise from the bottom of the screen.
+  - The hand is local only, so the other player never has it.
+  - Hover is picked by hand slot rather than by trace, so it doesn't flicker. The hovered card faces the screen, comes forward and rises.
+  - Holding left mouse drags a card. Moving it sideways reorders the hand. Positions of cards moved towards the camera are corrected for perspective.
+  - The left mouse button is read raw with `IsInputKeyDown`, like the mouse look.
+- Board, `ACardTable` (C++, now the parent class of BP_Table), **confirmed working** in 2-player PIE:
+  - There's one replicated row of `FBoardCard` (only an `InstanceId` for now) per seat, up to 7 cards (`MaxRowSize`). Rows are centred, and each is ordered left to right from its own seat.
+  - Each machine spawns its own card visuals from the rows and slides them into place.
+  - Dragging a card above the hand opens a local gap in your row where it would land. Releasing calls `ServerPlaceCard(InsertIndex)` on the pawn, and the server inserts the card. Both players see it.
+  - The server currently trusts the client, because the hand isn't server-side yet.
+
 ## Next tasks
 
-1. Hand of cards: cards slide up from the bottom in table view (via `OnTableViewChanged`). Then dragging with the mouse and dropping onto the table with snapping and centering.
-2. Card game rules: 5-card opening draw, mana +1 per round, and cards with cost, attack and health.
-3. Optional: per-seat cutouts (Danny for seat 0, Fiona for seat 1, chosen by `SeatIndex`). For now both players use the same cutout mesh, `Player/f_player`, renamed from `f_player_danny`.
-4. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
+1. Card data: a definition for each card (name, cost, attack, health), with that information shown on the card.
+2. Server-side hand: the server deals the cards and checks every play. It replaces the local placeholder hand.
+3. Card game rules: 5-card opening draw, mana +1 per round, turns.
+4. Optional: per-seat cutouts (Danny for seat 0, Fiona for seat 1, chosen by `SeatIndex`). For now both players use the same cutout mesh, `Player/f_player`, renamed from `f_player_danny`.
+5. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).
 
 Ready button flow (working):
 
