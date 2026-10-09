@@ -5,6 +5,8 @@
 #include "CardboardSettings.generated.h"
 
 class UDataTable;
+class USoundClass;
+class USoundMix;
 struct FCardDefinition;
 
 // Project Settings → Game → Cardboard. Saved to Config/DefaultGame.ini.
@@ -26,6 +28,20 @@ public:
 	FName CoinCardId = TEXT("Coin");
 
 	static FName GetCoinCardId();
+
+	// Volume sliders: this sound mix gets a volume override per sound class.
+	// Music and Effects classes should have Master as their parent class.
+	UPROPERTY(Config, EditAnywhere, Category = "Audio")
+	TSoftObjectPtr<USoundMix> VolumeSoundMix;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio")
+	TSoftObjectPtr<USoundClass> MasterSoundClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio")
+	TSoftObjectPtr<USoundClass> MusicSoundClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio")
+	TSoftObjectPtr<USoundClass> EffectsSoundClass;
 
 	static UDataTable* GetCardDataTable();
 
