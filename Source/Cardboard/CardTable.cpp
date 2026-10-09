@@ -12,7 +12,7 @@ ACardTable::ACardTable()
 	CardClass = ACardActor::StaticClass();
 }
 
-void ACardTable::PlaceCard(int32 Seat, int32 InsertIndex)
+void ACardTable::PlaceCard(int32 Seat, int32 InsertIndex, FName CardId)
 {
 	TArray<FBoardCard>* Row = GetRow(Seat);
 
@@ -23,6 +23,7 @@ void ACardTable::PlaceCard(int32 Seat, int32 InsertIndex)
 
 	FBoardCard NewCard;
 	NewCard.InstanceId = NextInstanceId++;
+	NewCard.CardId = CardId;
 
 	Row->Insert(NewCard, FMath::Clamp(InsertIndex, 0, Row->Num()));
 
@@ -176,6 +177,7 @@ void ACardTable::SyncBoardVisuals()
 
 			if (ACardActor* Card = GetWorld()->SpawnActor<ACardActor>(CardClass, SpawnTransform, SpawnParams))
 			{
+				Card->SetCard((*Row)[Index].CardId);
 				BoardCardActors.Add(InstanceId, Card);
 			}
 		}

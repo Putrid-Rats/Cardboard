@@ -112,10 +112,24 @@ The "Video memory has been exhausted" message in this setup is just the editor +
   - Dragging a card above the hand opens a local gap in your row where it would land. Releasing calls `ServerPlaceCard(InsertIndex)` on the pawn, and the server inserts the card. Both players see it.
   - The server currently trusts the client, because the hand isn't server-side yet.
 
+**2026-10-09, card data (branch `gameplay_cards`):**
+
+- The card sheet lives in `Data/Cards.csv` (edited in Excel) with the columns `ID,CardName,Cost,Attack,Health,Trait,AbilityId`.
+  - It's imported as the **DT_Cards** DataTable (`Content/TCG_Main/Gameplay`), with row struct `FCardDefinition`. The row name is the card ID.
+  - After editing the sheet, right-click DT_Cards → Reimport.
+  - Save it with commas. Polish Excel may use `;` instead.
+- Trait is the `ECardTrait` enum: None, Taunt, Fly or Stealth. There's one per card, and new traits are added in `CardDefinition.h`. AbilityId (FName, empty = none) is reserved for later.
+- The game finds the table through **Project Settings → Game → Cardboard → Card Data Table** (`UCardboardSettings`, stored in DefaultGame.ini).
+  - It's a soft reference, so **add DT_Cards (or its folder) to the packaging cook list** before making a packaged build.
+- `ACardActor::SetCard(CardId)` shows the cost, name, trait, attack and health as text on the card's front.
+- The placeholder hand draws random cards from the table. `FBoardCard` now replicates the CardId, so both players see which card was played.
+- **Confirmed working.** Traits are shown but have no gameplay effect yet.
+- The deck is currently every row of the sheet once (30 rows = 30 cards).
+
 ## Next tasks
 
-1. Card data: a definition for each card (name, cost, attack, health), with that information shown on the card.
-2. Server-side hand: the server deals the cards and checks every play. It replaces the local placeholder hand.
+1. Server-side deck and hand: shuffle the 30 cards, deal the opening hand, and have the server check every play. This replaces the local placeholder hand.
+2. Attacking and combat, including Taunt, Fly and Stealth.
 3. Card game rules: 5-card opening draw, mana +1 per round, turns.
 4. Optional: per-seat cutouts (Danny for seat 0, Fiona for seat 1, chosen by `SeatIndex`). For now both players use the same cutout mesh, `Player/f_player`, renamed from `f_player_danny`.
 5. Remove the temporary debug prints once each step works (including GM_Lobby_TCG's literal `"STARTING GAME - PLAYERS: " + player count` print).

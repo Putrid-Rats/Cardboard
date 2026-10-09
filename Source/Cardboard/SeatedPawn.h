@@ -77,7 +77,8 @@ public:
 	// Most cards a hand can hold.
 	static constexpr int32 MaxHandSize = 6;
 
-	// Placeholder cards given to the local player until the server deals real ones.
+	// Placeholder cards given to the local player until the server deals real ones,
+	// picked at random from the card sheet (DT_Cards).
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand", meta = (ClampMin = 0, ClampMax = 6))
 	int32 PlaceholderHandSize = MaxHandSize;
 
@@ -185,7 +186,7 @@ private:
 	TObjectPtr<ACardTable> Table;
 
 	UFUNCTION(Server, Reliable)
-	void ServerPlaceCard(int32 InsertIndex);
+	void ServerPlaceCard(int32 InsertIndex, FName CardId);
 
 	UFUNCTION()
 	void OnRep_LookRotation();

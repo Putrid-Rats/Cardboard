@@ -3,7 +3,9 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Camera/CameraComponent.h"
 #include "CardActor.h"
+#include "CardboardSettings.h"
 #include "CardTable.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "EnhancedInputComponent.h"
@@ -151,6 +153,13 @@ void ASeatedPawn::SpawnPlaceholderHand()
 		return;
 	}
 
+	TArray<FName> CardIds;
+
+	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
+	{
+		CardIds = CardTable->GetRowNames();
+	}
+
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -164,6 +173,7 @@ void ASeatedPawn::SpawnPlaceholderHand()
 			continue;
 		}
 
+		Card->SetCard(CardIds.Num() > 0 ? CardIds[FMath::RandRange(0, CardIds.Num() - 1)] : NAME_None);
 		Card->AttachToComponent(HandRoot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		HandCards.Add(Card);
 	}
@@ -270,17 +280,19 @@ void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, 
 void ASeatedPawn::PlayDraggedCard()
 {
 	// The hand is local for now, so the card just leaves it; the server adds the board card for everyone.
+	const FName CardId = DraggedCard->GetCardId();
+
 	HandCards.Remove(DraggedCard);
 	DraggedCard->Destroy();
 
-	ServerPlaceCard(BoardInsertIndex);
+	ServerPlaceCard(BoardInsertIndex, CardId);
 }
 
-void ASeatedPawn::ServerPlaceCard_Implementation(int32 InsertIndex)
+void ASeatedPawn::ServerPlaceCard_Implementation(int32 InsertIndex, FName CardId)
 {
 	if (Table)
 	{
-		Table->PlaceCard(SeatIndex, InsertIndex);
+		Table->PlaceCard(SeatIndex, InsertIndex, CardId);
 	}
 }
 

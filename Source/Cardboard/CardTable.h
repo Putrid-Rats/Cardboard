@@ -6,7 +6,7 @@
 
 class ACardActor;
 
-// One card lying on the table. Only an id for now; card data (cost, attack, health) comes later.
+// One card lying on the table.
 USTRUCT(BlueprintType)
 struct FBoardCard
 {
@@ -15,6 +15,10 @@ struct FBoardCard
 	// Unique per card on the board, so clients can tell which card moved when one is inserted.
 	UPROPERTY(BlueprintReadOnly, Category = "Board")
 	int32 InstanceId = 0;
+
+	// Row name in DT_Cards.
+	UPROPERTY(BlueprintReadOnly, Category = "Board")
+	FName CardId;
 };
 
 // The table both players sit at. Holds one row of played cards per seat.
@@ -52,7 +56,7 @@ public:
 	float BoardCardMoveSpeed = 10.0f;
 
 	// Server only. Puts a new card into the seat's row at InsertIndex (0 = leftmost from that seat).
-	void PlaceCard(int32 Seat, int32 InsertIndex);
+	void PlaceCard(int32 Seat, int32 InsertIndex, FName CardId);
 
 	// Where in the seat's row a card dropped along this mouse ray would go.
 	// False if the ray misses the table plane or the row is full.
