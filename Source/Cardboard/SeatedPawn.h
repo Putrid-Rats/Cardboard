@@ -156,6 +156,14 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
 	TObjectPtr<UTextRenderComponent> StatusText;
 
+	// Big "Victory" / "Defeat" in the middle of this player's view when the match ends (only they see it).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
+	TObjectPtr<UTextRenderComponent> ResultText;
+
+	// Smaller line under ResultText.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Seat|Hand")
+	TObjectPtr<UTextRenderComponent> ResultSubText;
+
 	// Server only. Moves cards from the top of the deck into the hand.
 	// With a full hand the drawn card is discarded; with an empty deck nothing happens (yet).
 	void DrawCards(int32 Count);
@@ -202,6 +210,16 @@ public:
 	// Every machine, on both pawns: the opening hands are dealt and the mulligan begins.
 	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Turn")
 	void OnMulliganStarted();
+
+	// Local player, after the match: ready for a rematch (also the E key). Both ready = new match.
+	UFUNCTION(BlueprintCallable, Category = "Seat|Turn")
+	void RequestRematch();
+
+	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
+	bool IsRematchReady() const { return bRematchReady; }
+
+	// Server only, for a rematch: empty hand, new shuffled deck, full health, no mana.
+	void ResetForNewMatch();
 
 	// Called by ACardGameState.
 	void NotifyCoinFlipped(int32 FirstSeat);
@@ -432,6 +450,13 @@ private:
 	// Replicated to everyone, so the other player can see "waiting for opponent".
 	UPROPERTY(Replicated)
 	bool bMulliganConfirmed = false;
+
+	// Replicated to everyone, so the other player can see "waiting for the opponent".
+	UPROPERTY(Replicated)
+	bool bRematchReady = false;
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestRematch();
 
 	// Local: hand cards (InstanceId) the player clicked to replace.
 	TSet<int32> MulliganMarked;

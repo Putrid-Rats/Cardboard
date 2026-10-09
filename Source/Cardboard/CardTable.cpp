@@ -159,6 +159,18 @@ FVector ACardTable::GetAttackTargetLocation(int32 Seat, int32 TargetId) const
 	return GetActorTransform().TransformPosition(FVector(LocalX, 0.0f, BoardHeight));
 }
 
+void ACardTable::ClearBoard()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	RowSeat0.Reset();
+	RowSeat1.Reset();
+	SyncBoardVisuals();
+}
+
 void ACardTable::MulticastAttackPerformed_Implementation(int32 Seat, int32 AttackerId, int32 TargetId, FVector_NetQuantize TargetLocation)
 {
 	// Lunge the attacker most of the way towards its target and back.

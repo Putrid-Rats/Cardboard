@@ -98,6 +98,33 @@ ASeatedPawn::ASeatedPawn()
 	StatusText->SetCastShadow(false);
 	StatusText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// Middle of the view, a bit above centre so the raised hand doesn't cover it.
+	ResultText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("ResultText"));
+	ResultText->SetupAttachment(Camera);
+	ResultText->SetRelativeLocation(FVector(40.0f, 0.0f, 6.0f));
+	ResultText->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
+	ResultText->SetHorizontalAlignment(EHTA_Center);
+	ResultText->SetVerticalAlignment(EVRTA_TextCenter);
+	ResultText->SetWorldSize(5.0f);
+	ResultText->SetOnlyOwnerSee(true);
+	ResultText->SetCastShadow(false);
+	ResultText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ResultText->SetText(FText::GetEmpty());
+	ResultText->SetVisibility(false);
+
+	ResultSubText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("ResultSubText"));
+	ResultSubText->SetupAttachment(ResultText);
+	ResultSubText->SetRelativeLocation(FVector(0.0f, 0.0f, -4.5f));
+	ResultSubText->SetHorizontalAlignment(EHTA_Center);
+	ResultSubText->SetVerticalAlignment(EVRTA_TextCenter);
+	ResultSubText->SetWorldSize(1.5f);
+	ResultSubText->SetTextRenderColor(FColor::White);
+	ResultSubText->SetOnlyOwnerSee(true);
+	ResultSubText->SetCastShadow(false);
+	ResultSubText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ResultSubText->SetText(FText::GetEmpty());
+	ResultSubText->SetVisibility(false);
+
 	CardClass = ACardActor::StaticClass();
 }
 
@@ -187,7 +214,20 @@ ASeatedPawn* ASeatedPawn::GetOpponentPawn() const
 
 void ASeatedPawn::NotifyMatchEnded(int32 WinningSeat)
 {
-	OnMatchEnded(SeatIndex == WinningSeat);
+	const bool bWon = SeatIndex == WinningSeat;
+
+	// Only the player looking through this pawn gets the banner.
+	if (IsLocallyControlled())
+	{
+		ResultText->SetText(FText::FromString(bWon ? TEXT("VICTORY") : TEXT("DEFEAT")));
+		ResultText->SetTextRenderColor(bWon ? FColor(255, 200, 40) : FColor(220, 40, 40));
+		ResultText->SetVisibility(true);
+
+		ResultSubText->SetText(FText::FromString(bWon ? TEXT("You drink to your win!") : TEXT("Your drink is gone...")));
+		ResultSubText->SetVisibility(true);
+	}
+
+	OnMatchEnded(bWon);
 }
 
 void ASeatedPawn::DebugDamage(int32 Amount)
@@ -251,13 +291,20 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 
 	if (const APlayerController* PlayerController = Cast<APlayerController>(GetController()))
 	{
-		if (bInTableView && PlayerController->WasInputKeyJustPressed(EKeys::E))
+		if (PlayerController->WasInputKeyJustPressed(EKeys::E))
 		{
-			if (IsMulliganPhase())
+			const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+			// After the match E works anywhere; during it, only in table view.
+			if (CardGameState && CardGameState->IsMatchOver())
+			{
+				RequestRematch();
+			}
+			else if (bInTableView && IsMulliganPhase())
 			{
 				ConfirmMulligan();
 			}
-			else
+			else if (bInTableView)
 			{
 				EndTurn();
 			}
@@ -385,6 +432,7 @@ void ASeatedPawn::UpdateStatusText()
 	else if (CardGameState->IsMatchOver())
 	{
 		Status = CardGameState->GetWinningSeat() == SeatIndex ? TEXT("You won!") : TEXT("You lost");
+		Status += bRematchReady ? TEXT("  Rematch: waiting for the opponent...") : TEXT("  E = ready for a rematch");
 	}
 	else if (CardGameState->GetMatchPhase() == EMatchPhase::CoinFlip)
 	{
@@ -496,8 +544,60 @@ void ASeatedPawn::ServerEndTurn_Implementation()
 	}
 }
 
+void ASeatedPawn::RequestRematch()
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (CardGameState && CardGameState->IsMatchOver() && !bRematchReady)
+	{
+		ServerRequestRematch();
+	}
+}
+
+void ASeatedPawn::ServerRequestRematch_Implementation()
+{
+	ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (!CardGameState || !CardGameState->IsMatchOver())
+	{
+		return;
+	}
+
+	bRematchReady = true;
+	CardGameState->NotifyRematchReady();
+}
+
+void ASeatedPawn::ResetForNewMatch()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	Hand.Reset();
+	SyncHandVisuals();
+
+	BuildDeck();
+
+	Mana = 0;
+	MaxMana = 0;
+	bMulliganConfirmed = false;
+	bRematchReady = false;
+
+	const int32 OldHealth = Health;
+	Health = MaxHealth;
+	OnRep_Health(OldHealth);
+}
+
 void ASeatedPawn::NotifyPhaseChanged(EMatchPhase NewPhase)
 {
+	// A new match is starting: take the result banner down.
+	if (NewPhase != EMatchPhase::Ended)
+	{
+		ResultText->SetVisibility(false);
+		ResultSubText->SetVisibility(false);
+	}
+
 	if (NewPhase != EMatchPhase::Mulligan)
 	{
 		MulliganMarked.Reset();
@@ -1419,6 +1519,7 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ASeatedPawn, Mana);
 	DOREPLIFETIME(ASeatedPawn, MaxMana);
 	DOREPLIFETIME(ASeatedPawn, bMulliganConfirmed);
+	DOREPLIFETIME(ASeatedPawn, bRematchReady);
 	DOREPLIFETIME(ASeatedPawn, HandCount);
 
 	// The owner already sees their real hand.

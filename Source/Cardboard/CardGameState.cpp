@@ -22,9 +22,9 @@ void ACardGameState::TryStartMatch()
 		return;
 	}
 
-	// Coin flip.
+	// Coin flip. The coin event goes out with the phase change (see OnRep_Phase), so a rematch
+	// that picks the same seat still shows the coin.
 	FirstSeat = FMath::RandRange(0, 1);
-	OnRep_FirstSeat();
 	SetPhase(EMatchPhase::CoinFlip);
 	SetPhaseTimer(&ACardGameState::StartMulligan, CoinFlipDuration);
 }
@@ -130,7 +130,42 @@ void ACardGameState::OnRep_Phase()
 	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
 	{
 		It->NotifyPhaseChanged(Phase);
+
+		// FirstSeat arrives in the same update as the phase, so it's already set here.
+		if (Phase == EMatchPhase::CoinFlip)
+		{
+			It->NotifyCoinFlipped(FirstSeat);
+		}
 	}
+}
+
+void ACardGameState::NotifyRematchReady()
+{
+	ASeatedPawn* Seat0 = FindSeatedPawn(0);
+	ASeatedPawn* Seat1 = FindSeatedPawn(1);
+
+	if (!HasAuthority() || Phase != EMatchPhase::Ended || !Seat0 || !Seat1
+		|| !Seat0->IsRematchReady() || !Seat1->IsRematchReady())
+	{
+		return;
+	}
+
+	// Fresh start: empty table, full health, new shuffled decks, then a new coin flip.
+	for (TActorIterator<ACardTable> It(GetWorld()); It; ++It)
+	{
+		It->ClearBoard();
+	}
+
+	Seat0->ResetForNewMatch();
+	Seat1->ResetForNewMatch();
+
+	FirstSeat = INDEX_NONE;
+	CurrentTurnSeat = INDEX_NONE;
+	TurnNumber = 0;
+	WinningSeat = INDEX_NONE;
+	PhaseEndServerTime = 0.0f;
+
+	TryStartMatch();
 }
 
 void ACardGameState::StartTurn(int32 Seat)
@@ -170,16 +205,14 @@ ASeatedPawn* ACardGameState::FindSeatedPawn(int32 Seat) const
 	return nullptr;
 }
 
-void ACardGameState::OnRep_FirstSeat()
-{
-	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
-	{
-		It->NotifyCoinFlipped(FirstSeat);
-	}
-}
-
 void ACardGameState::OnRep_CurrentTurnSeat()
 {
+	// -1 = reset for a rematch, not a real turn.
+	if (CurrentTurnSeat == INDEX_NONE)
+	{
+		return;
+	}
+
 	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
 	{
 		It->NotifyTurnStarted(CurrentTurnSeat);
@@ -188,6 +221,12 @@ void ACardGameState::OnRep_CurrentTurnSeat()
 
 void ACardGameState::OnRep_WinningSeat()
 {
+	// -1 = reset for a rematch, not a result.
+	if (WinningSeat == INDEX_NONE)
+	{
+		return;
+	}
+
 	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
 	{
 		It->NotifyMatchEnded(WinningSeat);

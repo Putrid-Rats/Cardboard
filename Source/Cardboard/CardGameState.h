@@ -96,6 +96,9 @@ public:
 	// Server only. Ignored once a winner is set.
 	void EndMatch(int32 InWinningSeat);
 
+	// Server only, called by a pawn that pressed ready after the match. Starts a rematch once both are ready.
+	void NotifyRematchReady();
+
 protected:
 
 	virtual void GetLifetimeReplicatedProps(
@@ -107,7 +110,7 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_Phase)
 	EMatchPhase Phase = EMatchPhase::WaitingForPlayers;
 
-	UPROPERTY(ReplicatedUsing = OnRep_FirstSeat)
+	UPROPERTY(Replicated)
 	int32 FirstSeat = INDEX_NONE;
 
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentTurnSeat)
@@ -129,8 +132,6 @@ private:
 	UFUNCTION()
 	void OnRep_Phase();
 
-	UFUNCTION()
-	void OnRep_FirstSeat();
 
 	UFUNCTION()
 	void OnRep_CurrentTurnSeat();

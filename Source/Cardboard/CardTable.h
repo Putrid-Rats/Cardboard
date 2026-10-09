@@ -100,6 +100,9 @@ public:
 	// Server only, at the start of the seat's turn: all its cards may attack again.
 	void ReadyCardsForTurn(int32 Seat);
 
+	// Server only: removes every card from both rows (rematch).
+	void ClearBoard();
+
 	// Whether the seat's card AttackerId may attack TargetId right now (ignores whose turn it is).
 	bool CanAttack(int32 Seat, int32 AttackerId, int32 TargetId) const;
 
