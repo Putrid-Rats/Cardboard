@@ -11,14 +11,30 @@ class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
 
+// One card in a player's hand.
+USTRUCT(BlueprintType)
+struct FHandCard
+{
+	GENERATED_BODY()
+
+	// Unique within this player's hand, so plays name an exact card even with duplicates.
+	UPROPERTY(BlueprintReadOnly, Category = "Hand")
+	int32 InstanceId = 0;
+
+	// Row name in DT_Cards.
+	UPROPERTY(BlueprintReadOnly, Category = "Hand")
+	FName CardId;
+};
+
 // A player sitting at the table. Doesn't move, only looks around.
 // Free look: mouse turns the head (raw mouse delta), cursor hidden.
 // Table view (toggled with TableViewAction): camera blends to TableViewPoint, cursor shown for cards,
 // and the hand of cards slides up from the bottom of the screen. Hovering a card brings it forward,
 // holding the left mouse button drags it to reorder the hand, and releasing it above the hand
-// plays it onto this seat's row on the table (the server places it, both players see it).
+// asks the server to play it onto this seat's row on the table.
 // The look rotation is replicated so the other player sees the cutout turn.
-// Hand cards are local only: the other player never has them.
+// Deck and hand live on the server. The deck never leaves it; the hand replicates to the owner only,
+// and each play is checked against it. Card visuals are spawned locally from the replicated hand.
 UCLASS()
 class CARDBOARD_API ASeatedPawn : public APawn
 {
@@ -77,10 +93,21 @@ public:
 	// Most cards a hand can hold.
 	static constexpr int32 MaxHandSize = 6;
 
-	// Placeholder cards given to the local player until the server deals real ones,
-	// picked at random from the card sheet (DT_Cards).
+	// Cards dealt from the shuffled deck when the player sits down.
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand", meta = (ClampMin = 0, ClampMax = 6))
-	int32 PlaceholderHandSize = MaxHandSize;
+	int32 OpeningHandSize = 5;
+
+	// Server only. Moves cards from the top of the deck into the hand.
+	// With a full hand the drawn card is discarded; with an empty deck nothing happens (yet).
+	void DrawCards(int32 Count);
+
+	// Cards left in the deck. Visible to both players.
+	UFUNCTION(BlueprintPure, Category = "Seat|Hand")
+	int32 GetDeckCount() const { return DeckCount; }
+
+	// Testing only: type DebugDrawCard in the console (`) to draw one card.
+	UFUNCTION(Exec)
+	void DebugDrawCard();
 
 	// HandRoot position relative to the camera when the hand is up (X forward, Z up, in cm).
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Hand")
@@ -142,6 +169,7 @@ protected:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;
+	virtual void PossessedBy(AController* NewController) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	virtual void GetLifetimeReplicatedProps(
@@ -161,9 +189,27 @@ private:
 	// 0 = just toggled, 1 = camera arrived at its target.
 	float CameraBlendProgress = 1.0f;
 
-	// Spawned locally on the owning player only, left to right.
+	// Server only: card IDs still to draw, the last one is the top.
+	TArray<FName> Deck;
+
+	bool bDealtOpeningHand = false;
+
+	UPROPERTY(Replicated)
+	int32 DeckCount = 0;
+
+	// The real hand. Replicates to the owning player only, so the opponent never learns it.
+	UPROPERTY(ReplicatedUsing = OnRep_Hand)
+	TArray<FHandCard> Hand;
+
+	int32 NextHandInstanceId = 1;
+
+	// Visuals of Hand, spawned on the owning player's machine, in the player's own order (left to right).
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ACardActor>> HandCards;
+
+	// Played cards waiting for the server: hidden, and brought back if the server refuses the play.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACardActor>> PendingPlayCards;
 
 	// 0 = hand hidden below the screen, 1 = hand fully up.
 	float HandProgress = 0.0f;
@@ -185,8 +231,19 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACardTable> Table;
 
+	// Play the hand card with this InstanceId into this seat's row at InsertIndex.
 	UFUNCTION(Server, Reliable)
-	void ServerPlaceCard(int32 InsertIndex, FName CardId);
+	void ServerPlayCard(int32 HandInstanceId, int32 InsertIndex);
+
+	// The server refused a play (card not in hand, row full): put the card back into the hand.
+	UFUNCTION(Client, Reliable)
+	void ClientRejectPlay(int32 HandInstanceId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerDebugDrawCard();
+
+	UFUNCTION()
+	void OnRep_Hand();
 
 	UFUNCTION()
 	void OnRep_LookRotation();
@@ -201,7 +258,10 @@ private:
 	void ApplyLookRotation();
 	void ApplyCursorMode();
 	void UpdateCameraBlend();
-	void SpawnPlaceholderHand();
+	void BuildDeck();
+
+	// Spawns visuals for new hand cards and removes visuals of cards that left the hand.
+	void SyncHandVisuals();
 	void UpdateHandSlide();
 	void UpdateHandInteraction();
 	void UpdateBoardPreview(const APlayerController& PlayerController, bool bOverBoard);

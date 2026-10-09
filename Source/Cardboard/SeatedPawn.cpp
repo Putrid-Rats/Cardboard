@@ -127,7 +127,19 @@ void ASeatedPawn::NotifyControllerChanged()
 	}
 
 	ApplyCursorMode();
-	SpawnPlaceholderHand();
+}
+
+void ASeatedPawn::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	// Server: the player just sat down. Shuffle their deck and deal the opening hand once.
+	if (!bDealtOpeningHand)
+	{
+		bDealtOpeningHand = true;
+		BuildDeck();
+		DrawCards(OpeningHandSize);
+	}
 }
 
 void ASeatedPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -141,31 +153,155 @@ void ASeatedPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 	}
 
+	for (ACardActor* Card : PendingPlayCards)
+	{
+		if (Card)
+		{
+			Card->Destroy();
+		}
+	}
+
 	HandCards.Empty();
+	PendingPlayCards.Empty();
 
 	Super::EndPlay(EndPlayReason);
 }
 
-void ASeatedPawn::SpawnPlaceholderHand()
+void ASeatedPawn::BuildDeck()
 {
-	if (!CardClass || HandCards.Num() > 0)
+	Deck.Reset();
+
+	// For now the deck is every card in the sheet once.
+	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
+	{
+		Deck = CardTable->GetRowNames();
+	}
+
+	// Fisher-Yates shuffle.
+	for (int32 Index = Deck.Num() - 1; Index > 0; --Index)
+	{
+		Deck.Swap(Index, FMath::RandRange(0, Index));
+	}
+
+	DeckCount = Deck.Num();
+}
+
+void ASeatedPawn::DrawCards(int32 Count)
+{
+	if (!HasAuthority())
 	{
 		return;
 	}
 
-	TArray<FName> CardIds;
-
-	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
+	for (int32 Drawn = 0; Drawn < Count && Deck.Num() > 0; ++Drawn)
 	{
-		CardIds = CardTable->GetRowNames();
+		const FName CardId = Deck.Pop();
+
+		// Full hand: the card is lost, like in Hearthstone.
+		if (Hand.Num() >= MaxHandSize)
+		{
+			continue;
+		}
+
+		FHandCard NewCard;
+		NewCard.InstanceId = NextHandInstanceId++;
+		NewCard.CardId = CardId;
+		Hand.Add(NewCard);
 	}
 
+	DeckCount = Deck.Num();
+
+	// OnRep doesn't run on the server, and the listen server host needs its visuals too.
+	SyncHandVisuals();
+}
+
+void ASeatedPawn::DebugDrawCard()
+{
+	ServerDebugDrawCard();
+}
+
+void ASeatedPawn::ServerDebugDrawCard_Implementation()
+{
+	DrawCards(1);
+}
+
+void ASeatedPawn::OnRep_Hand()
+{
+	SyncHandVisuals();
+}
+
+void ASeatedPawn::SyncHandVisuals()
+{
+	// Only the owning player shows their hand. On the server that means the host's own pawn.
+	if (HasAuthority() && !IsLocallyControlled())
+	{
+		return;
+	}
+
+	TSet<int32> InHand;
+
+	for (const FHandCard& HandCard : Hand)
+	{
+		InHand.Add(HandCard.InstanceId);
+	}
+
+	// Cards that left the hand: played (the server accepted) or discarded.
+	for (int32 Index = HandCards.Num() - 1; Index >= 0; --Index)
+	{
+		ACardActor* Card = HandCards[Index];
+
+		if (Card && InHand.Contains(Card->InstanceId))
+		{
+			continue;
+		}
+
+		if (Card == HoveredCard)
+		{
+			HoveredCard = nullptr;
+		}
+
+		if (Card == DraggedCard)
+		{
+			DraggedCard = nullptr;
+		}
+
+		if (Card)
+		{
+			Card->Destroy();
+		}
+
+		HandCards.RemoveAt(Index);
+	}
+
+	for (int32 Index = PendingPlayCards.Num() - 1; Index >= 0; --Index)
+	{
+		ACardActor* Card = PendingPlayCards[Index];
+
+		if (!Card || !InHand.Contains(Card->InstanceId))
+		{
+			if (Card)
+			{
+				Card->Destroy();
+			}
+
+			PendingPlayCards.RemoveAt(Index);
+		}
+	}
+
+	// New cards: added on the right, rising from below the hand.
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	for (int32 Index = 0; Index < FMath::Min(PlaceholderHandSize, MaxHandSize); ++Index)
+	for (const FHandCard& HandCard : Hand)
 	{
+		auto HasInstance = [&HandCard](const ACardActor* Card) { return Card && Card->InstanceId == HandCard.InstanceId; };
+
+		if (!CardClass || HandCards.ContainsByPredicate(HasInstance) || PendingPlayCards.ContainsByPredicate(HasInstance))
+		{
+			continue;
+		}
+
 		ACardActor* Card = GetWorld()->SpawnActor<ACardActor>(CardClass, HandRoot->GetComponentTransform(), SpawnParams);
 
 		if (!Card)
@@ -173,13 +309,31 @@ void ASeatedPawn::SpawnPlaceholderHand()
 			continue;
 		}
 
-		Card->SetCard(CardIds.Num() > 0 ? CardIds[FMath::RandRange(0, CardIds.Num() - 1)] : NAME_None);
+		Card->InstanceId = HandCard.InstanceId;
+		Card->SetCard(HandCard.CardId);
 		Card->AttachToComponent(HandRoot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		Card->SetActorRelativeLocation(FVector(0.0f, 0.0f, -HandHiddenDrop));
 		HandCards.Add(Card);
 	}
 
-	UpdateHandCards(0.0f, true);
+	// Applies the hand's hidden/shown state to the new cards too.
 	UpdateHandSlide();
+}
+
+void ASeatedPawn::ClientRejectPlay_Implementation(int32 HandInstanceId)
+{
+	for (int32 Index = 0; Index < PendingPlayCards.Num(); ++Index)
+	{
+		ACardActor* Card = PendingPlayCards[Index];
+
+		if (Card && Card->InstanceId == HandInstanceId)
+		{
+			PendingPlayCards.RemoveAt(Index);
+			Card->SetActorHiddenInGame(false);
+			HandCards.Add(Card);
+			return;
+		}
+	}
 }
 
 void ASeatedPawn::UpdateHandInteraction()
@@ -279,21 +433,34 @@ void ASeatedPawn::UpdateBoardPreview(const APlayerController& PlayerController, 
 
 void ASeatedPawn::PlayDraggedCard()
 {
-	// The hand is local for now, so the card just leaves it; the server adds the board card for everyone.
-	const FName CardId = DraggedCard->GetCardId();
-
+	// Hide it right away so the play feels instant. The replicated hand removes it for good,
+	// or ClientRejectPlay brings it back.
 	HandCards.Remove(DraggedCard);
-	DraggedCard->Destroy();
+	DraggedCard->SetActorHiddenInGame(true);
+	PendingPlayCards.Add(DraggedCard);
 
-	ServerPlaceCard(BoardInsertIndex, CardId);
+	ServerPlayCard(DraggedCard->InstanceId, BoardInsertIndex);
 }
 
-void ASeatedPawn::ServerPlaceCard_Implementation(int32 InsertIndex, FName CardId)
+void ASeatedPawn::ServerPlayCard_Implementation(int32 HandInstanceId, int32 InsertIndex)
 {
-	if (Table)
+	const int32 HandIndex = Hand.IndexOfByPredicate([HandInstanceId](const FHandCard& HandCard)
 	{
-		Table->PlaceCard(SeatIndex, InsertIndex, CardId);
+		return HandCard.InstanceId == HandInstanceId;
+	});
+
+	// Later: also check it's this player's turn and they have enough mana.
+	if (HandIndex == INDEX_NONE || !Table || Table->GetRowSize(SeatIndex) >= Table->MaxRowSize)
+	{
+		ClientRejectPlay(HandInstanceId);
+		return;
 	}
+
+	const FName CardId = Hand[HandIndex].CardId;
+	Hand.RemoveAt(HandIndex);
+
+	Table->PlaceCard(SeatIndex, InsertIndex, CardId);
+	SyncHandVisuals();
 }
 
 float ASeatedPawn::GetHandTop() const
@@ -577,4 +744,8 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 
 	// Arrives with the spawn, so it's already set when BeginPlay runs on clients.
 	DOREPLIFETIME_CONDITION(ASeatedPawn, SeatIndex, COND_InitialOnly);
+
+	// Only the owner may know their hand; the deck size is public.
+	DOREPLIFETIME_CONDITION(ASeatedPawn, Hand, COND_OwnerOnly);
+	DOREPLIFETIME(ASeatedPawn, DeckCount);
 }

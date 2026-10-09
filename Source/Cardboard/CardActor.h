@@ -52,6 +52,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Card")
 	FName GetCardId() const { return CardId; }
 
+	// Which hand or board entry this visual shows (FHandCard / FBoardCard InstanceId).
+	int32 InstanceId = 0;
+
 private:
 
 	FName CardId;
