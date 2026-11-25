@@ -84,6 +84,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Match")
 	float GetTimeRemaining() const;
 
+	// Seconds from the first turn to the end of the match (or to now, while it's still going).
+	UFUNCTION(BlueprintPure, Category = "Match")
+	float GetMatchDuration() const;
+
+	// Where "Back to Lobby" takes both players. Seamless travel keeps the Steam session and the connection.
+	// The GameMode must be named: server travel keeps the previous ?game= option (GM_Gameplay_TCG) otherwise.
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	FString LobbyMapUrl = TEXT("/Game/TCG_Main/Maps/L_Lobby?game=/Game/TCG_Main/GameMode/GM_Lobby_TCG.GM_Lobby_TCG_C");
+
+	// Server only: sends both players back to the lobby, after the match is over.
+	void ReturnToLobby();
+
 	// Server only. Starts the match once both seats have a player; does nothing otherwise.
 	void TryStartMatch();
 
@@ -125,6 +137,13 @@ private:
 	// Server world time when the current timed phase ends; clients compare it with the synced server time.
 	UPROPERTY(Replicated)
 	float PhaseEndServerTime = 0.0f;
+
+	// Server world times of the first turn and of the end of the match (0 = not yet).
+	UPROPERTY(Replicated)
+	float MatchStartServerTime = 0.0f;
+
+	UPROPERTY(Replicated)
+	float MatchEndServerTime = 0.0f;
 
 	// Coin flip -> mulligan, mulligan timeout, turn timeout. Only one runs at a time.
 	FTimerHandle PhaseTimer;

@@ -19,6 +19,9 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "SummaryWidget.h"
+#include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
 
@@ -225,9 +228,101 @@ void ASeatedPawn::NotifyMatchEnded(int32 WinningSeat)
 
 		ResultSubText->SetText(FText::FromString(bWon ? TEXT("You drink to your win!") : TEXT("Your drink is gone...")));
 		ResultSubText->SetVisibility(true);
+
+		// Let the banner (and the drinking) play for a moment, then open the summary.
+		GetWorldTimerManager().SetTimer(SummaryTimer, this, &ASeatedPawn::ShowSummary, SummaryDelay, false);
 	}
 
 	OnMatchEnded(bWon);
+}
+
+void ASeatedPawn::ShowSummary()
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (!PlayerController || !CardGameState || SummaryWidget)
+	{
+		return;
+	}
+
+	// Remember this match on this computer, then show the totals including it.
+	const ASeatedPawn* Opponent = GetOpponentPawn();
+
+	FMatchRecord Record;
+	Record.PlayedAt = FDateTime::Now();
+	Record.bWon = CardGameState->GetWinningSeat() == SeatIndex;
+	Record.OpponentName = Opponent ? Opponent->GetPlayerDisplayName() : FString();
+	Record.Turns = CardGameState->GetTurnNumber();
+	Record.DurationSeconds = CardGameState->GetMatchDuration();
+	Record.MyStats = MatchStats;
+	Record.OpponentStats = Opponent ? Opponent->MatchStats : FPlayerMatchStats();
+
+	UMatchHistorySave::AddMatch(Record);
+	const UMatchHistorySave* History = UMatchHistorySave::LoadHistory();
+
+	ResultText->SetVisibility(false);
+	ResultSubText->SetVisibility(false);
+
+	if (!SummaryWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: no SummaryWidgetClass set in BP_SeatedPawn, no summary screen"));
+		return;
+	}
+
+	SummaryWidget = CreateWidget<USummaryWidget>(PlayerController, SummaryWidgetClass);
+
+	if (SummaryWidget)
+	{
+		SummaryWidget->AddToViewport(10);
+		SummaryWidget->Init(this, History ? History->GetWins() : 0, History ? History->GetLosses() : 0);
+	}
+
+	// The buttons need the mouse cursor, even in free look.
+	ApplyCursorMode();
+}
+
+void ASeatedPawn::HideSummary()
+{
+	GetWorldTimerManager().ClearTimer(SummaryTimer);
+
+	if (SummaryWidget)
+	{
+		SummaryWidget->RemoveFromParent();
+		SummaryWidget = nullptr;
+		ApplyCursorMode();
+	}
+}
+
+FString ASeatedPawn::GetPlayerDisplayName() const
+{
+	if (const APlayerState* State = GetPlayerState())
+	{
+		if (!State->GetPlayerName().IsEmpty())
+		{
+			return State->GetPlayerName();
+		}
+	}
+
+	return FString::Printf(TEXT("Player %d"), SeatIndex + 1);
+}
+
+void ASeatedPawn::RequestReturnToLobby()
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (CardGameState && CardGameState->IsMatchOver())
+	{
+		ServerRequestReturnToLobby();
+	}
+}
+
+void ASeatedPawn::ServerRequestReturnToLobby_Implementation()
+{
+	if (ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>())
+	{
+		CardGameState->ReturnToLobby();
+	}
 }
 
 void ASeatedPawn::DebugDamage(int32 Amount)
@@ -278,7 +373,8 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 		UpdateCameraBlend();
 	}
 
-	const float HandTarget = bInTableView ? 1.0f : 0.0f;
+	// The hand slides away while the summary screen is open, and comes back for a rematch.
+	const float HandTarget = bInTableView && !SummaryWidget ? 1.0f : 0.0f;
 
 	if (HandProgress != HandTarget)
 	{
@@ -519,6 +615,7 @@ void ASeatedPawn::BeginTurn(int32 ManaCap)
 {
 	MaxMana = FMath::Min(MaxMana + 1, ManaCap);
 	Mana = MaxMana;
+	++MatchStats.TurnsTaken;
 	DrawCards(1);
 }
 
@@ -583,6 +680,7 @@ void ASeatedPawn::ResetForNewMatch()
 	MaxMana = 0;
 	bMulliganConfirmed = false;
 	bRematchReady = false;
+	MatchStats = FPlayerMatchStats();
 
 	const int32 OldHealth = Health;
 	Health = MaxHealth;
@@ -591,11 +689,12 @@ void ASeatedPawn::ResetForNewMatch()
 
 void ASeatedPawn::NotifyPhaseChanged(EMatchPhase NewPhase)
 {
-	// A new match is starting: take the result banner down.
+	// A new match is starting: take the result banner and the summary down.
 	if (NewPhase != EMatchPhase::Ended)
 	{
 		ResultText->SetVisibility(false);
 		ResultSubText->SetVisibility(false);
+		HideSummary();
 	}
 
 	if (NewPhase != EMatchPhase::Mulligan)
@@ -1206,6 +1305,7 @@ void ASeatedPawn::ServerPlayCard_Implementation(int32 HandInstanceId, int32 Inse
 	}
 
 	Mana -= Cost;
+	MatchStats.ManaSpent += Cost;
 	Hand.RemoveAt(HandIndex);
 
 	// The Coin is spent for +1 mana this turn; every other card goes on the table.
@@ -1216,6 +1316,7 @@ void ASeatedPawn::ServerPlayCard_Implementation(int32 HandInstanceId, int32 Inse
 	else
 	{
 		Table->PlaceCard(SeatIndex, InsertIndex, CardId);
+		++MatchStats.CardsPlayed;
 	}
 
 	SyncHandVisuals();
@@ -1377,7 +1478,8 @@ void ASeatedPawn::HandleLook(const FVector2D& MouseDelta)
 {
 	const FVector2D LookInput = MouseDelta * LookSensitivity;
 
-	if (bInTableView || LookInput.IsNearlyZero())
+	// No looking around while the summary screen needs the mouse.
+	if (bInTableView || SummaryWidget || LookInput.IsNearlyZero())
 	{
 		return;
 	}
@@ -1427,9 +1529,11 @@ void ASeatedPawn::ApplyCursorMode()
 		return;
 	}
 
-	PlayerController->SetShowMouseCursor(bInTableView);
+	// The cursor is needed for the cards (table view) and for the summary screen's buttons.
+	const bool bNeedsCursor = bInTableView || SummaryWidget != nullptr;
+	PlayerController->SetShowMouseCursor(bNeedsCursor);
 
-	if (bInTableView)
+	if (bNeedsCursor)
 	{
 		UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PlayerController, nullptr, EMouseLockMode::DoNotLock, false);
 	}
@@ -1520,6 +1624,7 @@ void ASeatedPawn::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ASeatedPawn, MaxMana);
 	DOREPLIFETIME(ASeatedPawn, bMulliganConfirmed);
 	DOREPLIFETIME(ASeatedPawn, bRematchReady);
+	DOREPLIFETIME(ASeatedPawn, MatchStats);
 	DOREPLIFETIME(ASeatedPawn, HandCount);
 
 	// The owner already sees their real hand.

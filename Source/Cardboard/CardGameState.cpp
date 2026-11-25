@@ -3,6 +3,7 @@
 #include "CardboardSettings.h"
 #include "CardTable.h"
 #include "EngineUtils.h"
+#include "GameFramework/GameModeBase.h"
 #include "Net/UnrealNetwork.h"
 #include "SeatedPawn.h"
 #include "TimerManager.h"
@@ -32,6 +33,33 @@ void ACardGameState::TryStartMatch()
 float ACardGameState::GetTimeRemaining() const
 {
 	return FMath::Max(PhaseEndServerTime - GetServerWorldTimeSeconds(), 0.0f);
+}
+
+float ACardGameState::GetMatchDuration() const
+{
+	if (MatchStartServerTime <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float End = MatchEndServerTime > 0.0f ? MatchEndServerTime : GetServerWorldTimeSeconds();
+	return FMath::Max(End - MatchStartServerTime, 0.0f);
+}
+
+void ACardGameState::ReturnToLobby()
+{
+	if (!HasAuthority() || !IsMatchOver())
+	{
+		return;
+	}
+
+	// Non-seamless travel breaks the Steam listen socket (see the notes), so always travel seamlessly.
+	if (AGameModeBase* GameMode = GetWorld()->GetAuthGameMode())
+	{
+		GameMode->bUseSeamlessTravel = true;
+	}
+
+	GetWorld()->ServerTravel(LobbyMapUrl);
 }
 
 void ACardGameState::SetPhaseTimer(void (ACardGameState::*Callback)(), float Duration)
@@ -88,6 +116,7 @@ void ACardGameState::NotifyMulliganConfirmed()
 	SecondPlayer->AddCardToHand(UCardboardSettings::GetCoinCardId());
 
 	SetPhase(EMatchPhase::Playing);
+	MatchStartServerTime = GetServerWorldTimeSeconds();
 	StartTurn(FirstSeat);
 }
 
@@ -111,6 +140,7 @@ void ACardGameState::EndMatch(int32 InWinningSeat)
 	WinningSeat = InWinningSeat;
 	GetWorldTimerManager().ClearTimer(PhaseTimer);
 	PhaseEndServerTime = 0.0f;
+	MatchEndServerTime = GetServerWorldTimeSeconds();
 
 	// OnRep doesn't run on the server, and the listen server host needs the events too.
 	OnRep_WinningSeat();
@@ -164,6 +194,8 @@ void ACardGameState::NotifyRematchReady()
 	TurnNumber = 0;
 	WinningSeat = INDEX_NONE;
 	PhaseEndServerTime = 0.0f;
+	MatchStartServerTime = 0.0f;
+	MatchEndServerTime = 0.0f;
 
 	TryStartMatch();
 }
@@ -247,4 +279,6 @@ void ACardGameState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACardGameState, TurnNumber);
 	DOREPLIFETIME(ACardGameState, WinningSeat);
 	DOREPLIFETIME(ACardGameState, PhaseEndServerTime);
+	DOREPLIFETIME(ACardGameState, MatchStartServerTime);
+	DOREPLIFETIME(ACardGameState, MatchEndServerTime);
 }
