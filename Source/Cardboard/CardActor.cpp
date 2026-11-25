@@ -124,6 +124,7 @@ UTextRenderComponent* ACardActor::CreateCardText(FName Name, float Horizontal, f
 void ACardActor::ClearCard()
 {
 	CardId = NAME_None;
+	ApplyMaterial(DefaultMaterial);
 
 	for (UTextRenderComponent* Text : { NameText, TraitText, CostText, AttackText, HealthText })
 	{
@@ -137,6 +138,7 @@ void ACardActor::SetCard(FName InCardId)
 
 	if (const FCardDefinition* Definition = UCardboardSettings::FindCard(CardId))
 	{
+		ApplyMaterial(Definition->Material.IsNull() ? DefaultMaterial.Get() : Definition->Material.LoadSynchronous());
 		NameText->SetText(Definition->CardName);
 		CostText->SetText(FText::AsNumber(Definition->Cost));
 		AttackText->SetText(FText::AsNumber(Definition->Attack));
@@ -148,6 +150,8 @@ void ACardActor::SetCard(FName InCardId)
 		return;
 	}
 
+	ApplyMaterial(DefaultMaterial);
+
 	const FText Unknown = FText::FromString(TEXT("?"));
 
 	NameText->SetText(FText::FromName(CardId));
@@ -155,4 +159,12 @@ void ACardActor::SetCard(FName InCardId)
 	CostText->SetText(Unknown);
 	AttackText->SetText(Unknown);
 	HealthText->SetText(Unknown);
+}
+
+void ACardActor::ApplyMaterial(UMaterialInterface* Material)
+{
+	if (Material)
+	{
+		CardMesh->SetMaterial(0, Material);
+	}
 }

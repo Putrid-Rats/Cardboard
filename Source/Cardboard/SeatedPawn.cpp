@@ -821,11 +821,22 @@ void ASeatedPawn::BuildDeck()
 {
 	Deck.Reset();
 
-	// For now the deck is every card in the sheet once, except The Coin.
+	// Every card in the sheet, as many times as its Copies column says. The Coin is never in the deck.
 	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
 	{
-		Deck = CardTable->GetRowNames();
-		Deck.Remove(UCardboardSettings::GetCoinCardId());
+		CardTable->ForeachRow<FCardDefinition>(TEXT("BuildDeck"),
+			[this](const FName& CardId, const FCardDefinition& Definition)
+			{
+				if (CardId == UCardboardSettings::GetCoinCardId())
+				{
+					return;
+				}
+
+				for (int32 Copy = 0; Copy < Definition.Copies; ++Copy)
+				{
+					Deck.Add(CardId);
+				}
+			});
 	}
 
 	// Fisher-Yates shuffle.

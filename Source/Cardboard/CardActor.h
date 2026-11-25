@@ -8,8 +8,8 @@
 class UStaticMeshComponent;
 class UTextRenderComponent;
 
-// One card in the world. Placeholder look: the engine cube scaled to a standard
-// 2.5" x 3.5" trading card. Thin along X, width along Y, height along Z.
+// One card in the world, the size of a standard 2.5" x 3.5" trading card. Thin along X, width along Y, height along Z.
+// The C++ default mesh is the engine cube; BP_CardActor swaps in the real card model.
 // The front face is the -X side: in the hand it faces the camera, on the table it faces up.
 // SetCard fills the texts on the front from the card sheet (DT_Cards).
 UCLASS()
@@ -26,9 +26,14 @@ public:
 	static constexpr float CardHeight = 8.89f;
 	static constexpr float CardThickness = 0.2f;
 
-	// Swap the mesh in a Blueprint child once there's a real card model.
+	// In BP_CardActor: the card model, rotated and scaled so its front faces -X at 6.35 x 8.89 cm.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
 	TObjectPtr<UStaticMeshComponent> CardMesh;
+
+	// Used when a card has no Material in the sheet, and for blank cards (opponent's hand).
+	// Empty = keep the mesh's own material.
+	UPROPERTY(EditDefaultsOnly, Category = "Card")
+	TObjectPtr<UMaterialInterface> DefaultMaterial;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
 	TObjectPtr<UTextRenderComponent> NameText;
@@ -89,5 +94,6 @@ private:
 
 	UTextRenderComponent* CreateCardText(FName Name, float Horizontal, float Vertical, float Size, FColor Color);
 	UStaticMeshComponent* CreateFrame(FName Name, float Margin, float BehindOffset);
+	void ApplyMaterial(UMaterialInterface* Material);
 	static void SetFrameColor(UStaticMeshComponent* Frame, const FLinearColor& Color);
 };

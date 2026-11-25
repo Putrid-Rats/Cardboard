@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "Materials/MaterialInterface.h"
 #include "CardDefinition.generated.h"
 
 // Built-in keyword a card can have. To add one, add an entry here; the sheet then accepts its name.
@@ -46,4 +47,13 @@ struct FCardDefinition : public FTableRowBase
 	// Reserved for card abilities later. Empty = no ability.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card")
 	FName AbilityId;
+
+	// How many of this card go in each player's deck. 0 = never in the deck (e.g. The Coin).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card", meta = (ClampMin = 0))
+	int32 Copies = 2;
+
+	// The card's look: a material instance of M_Card with this card's textures (front art + back).
+	// Empty = the card actor's DefaultMaterial.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card")
+	TSoftObjectPtr<UMaterialInterface> Material;
 };
