@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "MatchHistorySave.h"
 #include "SeatedPawn.generated.h"
 
 class ACardActor;
@@ -11,6 +12,7 @@ class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
 class UInstancedStaticMeshComponent;
+class USummaryWidget;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 enum class EMatchPhase : uint8;
@@ -218,8 +220,28 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Seat|Turn")
 	bool IsRematchReady() const { return bRematchReady; }
 
-	// Server only, for a rematch: empty hand, new shuffled deck, full health, no mana.
+	// Server only, for a rematch: empty hand, new shuffled deck, full health, no mana, zeroed stats.
 	void ResetForNewMatch();
+
+	// Local player: take both players back to the lobby (after the match). The session stays open.
+	UFUNCTION(BlueprintCallable, Category = "Seat|Turn")
+	void RequestReturnToLobby();
+
+	// What this player did this match. Counted on the server, visible to both players.
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Seat|Stats")
+	FPlayerMatchStats MatchStats;
+
+	// The end-of-match screen (WBP_MatchSummary). Set in BP_SeatedPawn's Class Defaults.
+	UPROPERTY(EditDefaultsOnly, Category = "Seat|Summary")
+	TSubclassOf<USummaryWidget> SummaryWidgetClass;
+
+	// Seconds between the VICTORY / DEFEAT banner and the summary screen.
+	UPROPERTY(EditDefaultsOnly, Category = "Seat|Summary")
+	float SummaryDelay = 2.5f;
+
+	// The player's name (Steam name online), or "Player 1" / "Player 2".
+	UFUNCTION(BlueprintPure, Category = "Seat")
+	FString GetPlayerDisplayName() const;
 
 	// Called by ACardGameState.
 	void NotifyCoinFlipped(int32 FirstSeat);
@@ -457,6 +479,18 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestRematch();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestReturnToLobby();
+
+	UPROPERTY(Transient)
+	TObjectPtr<USummaryWidget> SummaryWidget;
+
+	FTimerHandle SummaryTimer;
+
+	// Local player: saves the match to the local history and opens the summary screen.
+	void ShowSummary();
+	void HideSummary();
 
 	// Local: hand cards (InstanceId) the player clicked to replace.
 	TSet<int32> MulliganMarked;

@@ -14,6 +14,18 @@ void ALobbyPlayerState::SetReady(bool bNewReady)
 	OnRep_IsReady();
 }
 
+void ALobbyPlayerState::SetIsHost(bool bNewIsHost)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	bIsHost = bNewIsHost;
+	OnRep_IsReady();
+}
+
+// Also the RepNotify for bIsHost: either change means the lobby UI should refresh.
 void ALobbyPlayerState::OnRep_IsReady()
 {
 	if (ALobbyGameState* LobbyGameState = GetWorld()->GetGameState<ALobbyGameState>())
@@ -29,4 +41,5 @@ void ALobbyPlayerState::GetLifetimeReplicatedProps(
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ALobbyPlayerState, bIsReady);
+	DOREPLIFETIME(ALobbyPlayerState, bIsHost);
 }

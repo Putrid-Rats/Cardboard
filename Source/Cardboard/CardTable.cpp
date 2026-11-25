@@ -96,15 +96,20 @@ void ACardTable::Attack(int32 Seat, int32 AttackerId, int32 TargetId)
 	Attacker->bCanAttack = false;
 	Attacker->bStealthed = false;
 
+	// For the end-of-match statistics.
+	ASeatedPawn* AttackingPlayer = FindSeatedPawn(Seat);
+	ASeatedPawn* DefendingPlayer = FindSeatedPawn(1 - Seat);
+
 	if (TargetId == PlayerTarget)
 	{
-		for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
+		if (AttackingPlayer)
 		{
-			if (It->SeatIndex == 1 - Seat)
-			{
-				It->ApplyPlayerDamage(Attacker->Attack);
-				break;
-			}
+			AttackingPlayer->MatchStats.DamageToOpponent += Attacker->Attack;
+		}
+
+		if (DefendingPlayer)
+		{
+			DefendingPlayer->ApplyPlayerDamage(Attacker->Attack);
 		}
 	}
 	else
@@ -114,13 +119,35 @@ void ACardTable::Attack(int32 Seat, int32 AttackerId, int32 TargetId)
 		// Both cards hit each other.
 		Target->Health -= Attacker->Attack;
 		Attacker->Health -= Target->Attack;
+
+		if (AttackingPlayer)
+		{
+			AttackingPlayer->MatchStats.DamageToCards += Attacker->Attack;
+		}
+
+		if (DefendingPlayer)
+		{
+			DefendingPlayer->MatchStats.DamageToCards += Target->Attack;
+		}
 	}
 
 	MulticastAttackPerformed(Seat, AttackerId, TargetId, GetAttackTargetLocation(Seat, TargetId));
 
 	auto IsDead = [](const FBoardCard& Card) { return Card.Health <= 0; };
-	OwnRow.RemoveAll(IsDead);
-	EnemyRow.RemoveAll(IsDead);
+	const int32 AttackerLosses = OwnRow.RemoveAll(IsDead);
+	const int32 DefenderLosses = EnemyRow.RemoveAll(IsDead);
+
+	if (AttackingPlayer)
+	{
+		AttackingPlayer->MatchStats.CardsDestroyed += DefenderLosses;
+		AttackingPlayer->MatchStats.CardsLost += AttackerLosses;
+	}
+
+	if (DefendingPlayer)
+	{
+		DefendingPlayer->MatchStats.CardsDestroyed += AttackerLosses;
+		DefendingPlayer->MatchStats.CardsLost += DefenderLosses;
+	}
 
 	SyncBoardVisuals();
 }
@@ -179,6 +206,19 @@ void ACardTable::MulticastAttackPerformed_Implementation(int32 Seat, int32 Attac
 	LungeElapsed = 0.0f;
 
 	OnAttackPerformed(Seat, AttackerId, TargetId);
+}
+
+ASeatedPawn* ACardTable::FindSeatedPawn(int32 Seat) const
+{
+	for (TActorIterator<ASeatedPawn> It(GetWorld()); It; ++It)
+	{
+		if (It->SeatIndex == Seat)
+		{
+			return *It;
+		}
+	}
+
+	return nullptr;
 }
 
 bool ACardTable::FindBoardCard(int32 InstanceId, int32& OutSeat, FBoardCard& OutCard) const

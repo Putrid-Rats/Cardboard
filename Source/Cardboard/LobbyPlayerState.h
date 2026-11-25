@@ -20,7 +20,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	bool IsReady() const { return bIsReady; }
 
+	// True for the player who hosts the session (the listen server's own player).
+	// Set by the server, so every machine agrees on who the host is.
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	bool IsHost() const { return bIsHost; }
+
+	// Server only, called by ALobbyGameState when the player joins.
+	void SetIsHost(bool bNewIsHost);
+
 protected:
+
+	UPROPERTY(ReplicatedUsing = OnRep_IsReady)
+	bool bIsHost = false;
 
 	UFUNCTION()
 	void OnRep_IsReady();

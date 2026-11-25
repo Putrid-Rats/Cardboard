@@ -6,6 +6,7 @@
 #include "CardTable.generated.h"
 
 class ACardActor;
+class ASeatedPawn;
 
 // One card lying on the table, with its current combat state.
 USTRUCT(BlueprintType)
@@ -170,6 +171,8 @@ private:
 
 	// Where an attack on TargetId should aim (the card, or the player's side of the table).
 	FVector GetAttackTargetLocation(int32 Seat, int32 TargetId) const;
+
+	ASeatedPawn* FindSeatedPawn(int32 Seat) const;
 
 	UFUNCTION()
 	void OnRep_Rows();
