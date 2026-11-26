@@ -5,7 +5,7 @@
 #include "SummaryWidget.generated.h"
 
 class ASeatedPawn;
-class UButton;
+class UWidget;
 class UTextBlock;
 struct FPlayerMatchStats;
 
@@ -57,10 +57,10 @@ protected:
 	TObjectPtr<UTextBlock> RematchStatusText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UButton> RematchButton;
+	TObjectPtr<UWidget> RematchButton;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UButton> BackToLobbyButton;
+	TObjectPtr<UWidget> BackToLobbyButton;
 
 private:
 

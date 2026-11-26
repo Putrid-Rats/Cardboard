@@ -1,7 +1,7 @@
 #include "SummaryWidget.h"
 
 #include "CardGameState.h"
-#include "Components/Button.h"
+#include "CardboardUI.h"
 #include "Components/TextBlock.h"
 #include "MatchHistorySave.h"
 #include "SeatedPawn.h"
@@ -29,14 +29,15 @@ void USummaryWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	if (RematchButton)
+	// Plain Buttons or WBP_Button both work (see CardboardUI.h).
+	if (UButton* Button = FindClickableButton(RematchButton))
 	{
-		RematchButton->OnClicked.AddDynamic(this, &USummaryWidget::HandleRematchClicked);
+		Button->OnClicked.AddDynamic(this, &USummaryWidget::HandleRematchClicked);
 	}
 
-	if (BackToLobbyButton)
+	if (UButton* Button = FindClickableButton(BackToLobbyButton))
 	{
-		BackToLobbyButton->OnClicked.AddDynamic(this, &USummaryWidget::HandleBackToLobbyClicked);
+		Button->OnClicked.AddDynamic(this, &USummaryWidget::HandleBackToLobbyClicked);
 	}
 }
 
