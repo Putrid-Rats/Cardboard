@@ -4,6 +4,7 @@
 #include "Camera/CameraComponent.h"
 #include "CardActor.h"
 #include "CardboardSettings.h"
+#include "CardboardUserSettings.h"
 #include "CardDefinition.h"
 #include "CardGameState.h"
 #include "CardPlayerState.h"
@@ -424,6 +425,12 @@ void ASeatedPawn::Tick(float DeltaSeconds)
 
 	SendHandPose(DeltaSeconds);
 	UpdateStatusText();
+
+	// Field of view from the player's settings (cheap enough to just set every frame).
+	if (const UCardboardUserSettings* UserSettings = UCardboardUserSettings::GetCardboardUserSettings())
+	{
+		Camera->SetFieldOfView(UserSettings->GetFieldOfView());
+	}
 }
 
 void ASeatedPawn::SendHandPose(float DeltaSeconds)
@@ -1561,7 +1568,9 @@ void ASeatedPawn::UpdateHandSlide()
 
 void ASeatedPawn::HandleLook(const FVector2D& MouseDelta)
 {
-	const FVector2D LookInput = MouseDelta * LookSensitivity;
+	const UCardboardUserSettings* UserSettings = UCardboardUserSettings::GetCardboardUserSettings();
+	const float SettingsSensitivity = UserSettings ? UserSettings->GetMouseSensitivity() : 1.0f;
+	const FVector2D LookInput = MouseDelta * LookSensitivity * SettingsSensitivity;
 
 	// No looking around while the summary screen needs the mouse.
 	if (bInTableView || SummaryWidget || LookInput.IsNearlyZero())
