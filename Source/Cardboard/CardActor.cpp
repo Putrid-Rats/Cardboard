@@ -171,9 +171,7 @@ void ACardActor::SetCard(FName InCardId)
 		AttackText->SetText(FText::AsNumber(Definition->Attack));
 		HealthText->SetText(FText::AsNumber(Definition->Health));
 
-		TraitText->SetText(Definition->Trait == ECardTrait::None
-			? FText::GetEmpty()
-			: UEnum::GetDisplayValueAsText(Definition->Trait));
+		TraitText->SetText(Definition->GetRulesText());
 		return;
 	}
 

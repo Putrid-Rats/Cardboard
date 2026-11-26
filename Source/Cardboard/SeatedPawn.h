@@ -13,6 +13,7 @@ class UInputAction;
 class UInputMappingContext;
 class UInstancedStaticMeshComponent;
 class USummaryWidget;
+struct FCardDefinition;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 enum class EMatchPhase : uint8;
@@ -167,7 +168,8 @@ public:
 	TObjectPtr<UTextRenderComponent> ResultSubText;
 
 	// Server only. Moves cards from the top of the deck into the hand.
-	// With a full hand the drawn card is discarded; with an empty deck nothing happens (yet).
+	// With a full hand the drawn card is discarded. Each draw from an empty deck is fatigue:
+	// 1 damage, then 2, then 3, and so on.
 	void DrawCards(int32 Count);
 
 	// Server only. Puts a specific card into the hand (e.g. The Coin). Discarded if the hand is full.
@@ -278,6 +280,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Seat|Health")
 	void ApplyPlayerDamage(int32 Amount);
 
+	// Server only. Restores health, up to MaxHealth.
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Seat|Health")
+	void HealPlayer(int32 Amount);
+
 	// Every machine, on this player's pawn: health went from OldHealth to NewHealth
 	// (the opponent takes a sip of this player's bottle). The first update after spawning has OldHealth 0.
 	UFUNCTION(BlueprintImplementableEvent, Category = "Seat|Health")
@@ -387,6 +393,12 @@ private:
 	TArray<FName> Deck;
 
 	bool bDeckBuilt = false;
+
+	// Server only: damage the next draw from an empty deck deals, minus 1.
+	int32 FatigueDamage = 0;
+
+	// Server only: runs the played card's on-play ability.
+	void ApplyOnPlayAbility(const FCardDefinition& Definition);
 
 	UPROPERTY(ReplicatedUsing = OnRep_DeckCount)
 	int32 DeckCount = 0;

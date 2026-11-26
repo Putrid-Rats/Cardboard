@@ -24,3 +24,32 @@ const FCardDefinition* UCardboardSettings::FindCard(FName CardId)
 
 	return CardTable->FindRow<FCardDefinition>(CardId, TEXT("FindCard"), false);
 }
+
+UDataTable* UCardboardSettings::GetDeckDataTable()
+{
+	return GetDefault<UCardboardSettings>()->DeckDataTable.LoadSynchronous();
+}
+
+const FDeckDefinition* UCardboardSettings::FindDeck(FName DeckId)
+{
+	const UDataTable* DeckTable = GetDeckDataTable();
+
+	if (!DeckTable || DeckId.IsNone())
+	{
+		return nullptr;
+	}
+
+	return DeckTable->FindRow<FDeckDefinition>(DeckId, TEXT("FindDeck"), false);
+}
+
+TArray<FName> UCardboardSettings::GetDeckIds()
+{
+	const UDataTable* DeckTable = GetDeckDataTable();
+	return DeckTable ? DeckTable->GetRowNames() : TArray<FName>();
+}
+
+FName UCardboardSettings::GetDefaultDeckId()
+{
+	const TArray<FName> DeckIds = GetDeckIds();
+	return DeckIds.Num() > 0 ? DeckIds[0] : NAME_None;
+}

@@ -1,0 +1,55 @@
+[
+	{
+		"Name": "Swarm",
+		"DeckName": "Swarm",
+		"Description": "Cheap minions with Charge and Fly. Ignore the board, hit face, end it before they get going.",
+		"Cards": [
+			{ "CardId": "Ant", "Copies": 2 },
+			{ "CardId": "Rat", "Copies": 2 },
+			{ "CardId": "Lizard", "Copies": 2 },
+			{ "CardId": "Rooster", "Copies": 2 },
+			{ "CardId": "Pigeon", "Copies": 2 },
+			{ "CardId": "RedPanda", "Copies": 2 },
+			{ "CardId": "Possum", "Copies": 2 },
+			{ "CardId": "Crow", "Copies": 2 },
+			{ "CardId": "Fox", "Copies": 2 },
+			{ "CardId": "Cat", "Copies": 2 },
+			{ "CardId": "Ram", "Copies": 2 }
+		]
+	},
+	{
+		"Name": "BuryThem",
+		"DeckName": "Bury Them",
+		"Description": "Hide behind Taunts and heals while Mouse and Donkey make your opponent draw until their deck is empty. Fatigue does the rest.",
+		"Cards": [
+			{ "CardId": "Mouse", "Copies": 3 },
+			{ "CardId": "Crab", "Copies": 2 },
+			{ "CardId": "Puppy", "Copies": 2 },
+			{ "CardId": "RedPanda", "Copies": 2 },
+			{ "CardId": "Hedgehog", "Copies": 2 },
+			{ "CardId": "Camel", "Copies": 2 },
+			{ "CardId": "Donkey", "Copies": 3 },
+			{ "CardId": "Dog", "Copies": 2 },
+			{ "CardId": "Deer", "Copies": 2 },
+			{ "CardId": "Bear", "Copies": 2 }
+		]
+	},
+	{
+		"Name": "BigBeasts",
+		"DeckName": "Big Beasts",
+		"Description": "Survive the early turns, then take over the board with bears and hippos nobody can trade with.",
+		"Cards": [
+			{ "CardId": "Possum", "Copies": 2 },
+			{ "CardId": "Puppy", "Copies": 2 },
+			{ "CardId": "Crab", "Copies": 2 },
+			{ "CardId": "RedPanda", "Copies": 2 },
+			{ "CardId": "Cat", "Copies": 2 },
+			{ "CardId": "Camel", "Copies": 2 },
+			{ "CardId": "Dog", "Copies": 2 },
+			{ "CardId": "Horse", "Copies": 2 },
+			{ "CardId": "Deer", "Copies": 2 },
+			{ "CardId": "Bear", "Copies": 2 },
+			{ "CardId": "Hippo", "Copies": 2 }
+		]
+	}
+]

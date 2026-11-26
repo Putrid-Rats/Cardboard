@@ -6,6 +6,7 @@
 #include "CardboardSettings.h"
 #include "CardDefinition.h"
 #include "CardGameState.h"
+#include "CardPlayerState.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -173,6 +174,20 @@ void ASeatedPawn::ApplyPlayerDamage(int32 Amount)
 			UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: no CardGameState, set it as GameState Class in GM_Gameplay_TCG"));
 		}
 	}
+}
+
+void ASeatedPawn::HealPlayer(int32 Amount)
+{
+	const ACardGameState* CardGameState = GetWorld()->GetGameState<ACardGameState>();
+
+	if (!HasAuthority() || Amount <= 0 || Health <= 0 || Health >= MaxHealth || (CardGameState && CardGameState->IsMatchOver()))
+	{
+		return;
+	}
+
+	const int32 OldHealth = Health;
+	Health = FMath::Min(Health + Amount, MaxHealth);
+	OnRep_Health(OldHealth);
 }
 
 void ASeatedPawn::OnRep_Health(int32 OldHealth)
@@ -678,6 +693,7 @@ void ASeatedPawn::ResetForNewMatch()
 
 	Mana = 0;
 	MaxMana = 0;
+	FatigueDamage = 0;
 	bMulliganConfirmed = false;
 	bRematchReady = false;
 	MatchStats = FPlayerMatchStats();
@@ -821,22 +837,33 @@ void ASeatedPawn::BuildDeck()
 {
 	Deck.Reset();
 
-	// Every card in the sheet, as many times as its Copies column says. The Coin is never in the deck.
-	if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
-	{
-		CardTable->ForeachRow<FCardDefinition>(TEXT("BuildDeck"),
-			[this](const FName& CardId, const FCardDefinition& Definition)
-			{
-				if (CardId == UCardboardSettings::GetCoinCardId())
-				{
-					return;
-				}
+	// The deck the player picked in the lobby (or the default deck).
+	const ACardPlayerState* CardPlayerState = GetPlayerState<ACardPlayerState>();
+	const FName DeckId = CardPlayerState ? CardPlayerState->GetSelectedDeck() : UCardboardSettings::GetDefaultDeckId();
 
-				for (int32 Copy = 0; Copy < Definition.Copies; ++Copy)
-				{
-					Deck.Add(CardId);
-				}
-			});
+	if (const FDeckDefinition* DeckDefinition = UCardboardSettings::FindDeck(DeckId))
+	{
+		for (const FDeckCard& Entry : DeckDefinition->Cards)
+		{
+			if (!UCardboardSettings::FindCard(Entry.CardId))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: deck %s lists %s, which isn't in DT_Cards"), *DeckId.ToString(), *Entry.CardId.ToString());
+				continue;
+			}
+
+			for (int32 Copy = 0; Copy < Entry.Copies; ++Copy)
+			{
+				Deck.Add(Entry.CardId);
+			}
+		}
+	}
+	else if (const UDataTable* CardTable = UCardboardSettings::GetCardDataTable())
+	{
+		// No deck table: every card in the sheet once, except The Coin.
+		UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: no deck found (set DT_Decks in Project Settings > Cardboard), using every card once"));
+
+		Deck = CardTable->GetRowNames();
+		Deck.Remove(UCardboardSettings::GetCoinCardId());
 	}
 
 	// Fisher-Yates shuffle.
@@ -855,12 +882,53 @@ void ASeatedPawn::DrawCards(int32 Count)
 		return;
 	}
 
-	for (int32 Drawn = 0; Drawn < Count && Deck.Num() > 0; ++Drawn)
+	for (int32 Drawn = 0; Drawn < Count; ++Drawn)
 	{
-		AddCardToHand(Deck.Pop());
+		if (Deck.Num() > 0)
+		{
+			AddCardToHand(Deck.Pop());
+		}
+		else
+		{
+			ApplyPlayerDamage(++FatigueDamage);
+		}
 	}
 
 	SetDeckCount(Deck.Num());
+}
+
+void ASeatedPawn::ApplyOnPlayAbility(const FCardDefinition& Definition)
+{
+	const int32 Value = Definition.AbilityValue;
+
+	switch (Definition.Ability)
+	{
+	case ECardAbility::OpponentDraws:
+		if (ASeatedPawn* Opponent = Table ? Table->FindSeatedPawn(1 - SeatIndex) : nullptr)
+		{
+			Opponent->DrawCards(Value);
+		}
+		break;
+
+	case ECardAbility::Draw:
+		DrawCards(Value);
+		break;
+
+	case ECardAbility::Heal:
+		HealPlayer(Value);
+		break;
+
+	case ECardAbility::DamageOpponent:
+		if (ASeatedPawn* Opponent = Table ? Table->FindSeatedPawn(1 - SeatIndex) : nullptr)
+		{
+			Opponent->ApplyPlayerDamage(Value);
+			MatchStats.DamageToOpponent += Value;
+		}
+		break;
+
+	default:
+		break;
+	}
 }
 
 void ASeatedPawn::AddCardToHand(FName CardId)
@@ -1328,6 +1396,12 @@ void ASeatedPawn::ServerPlayCard_Implementation(int32 HandInstanceId, int32 Inse
 	{
 		Table->PlaceCard(SeatIndex, InsertIndex, CardId);
 		++MatchStats.CardsPlayed;
+	}
+
+	// After the card left the hand, so a Draw ability has room in it.
+	if (Definition)
+	{
+		ApplyOnPlayAbility(*Definition);
 	}
 
 	SyncHandVisuals();

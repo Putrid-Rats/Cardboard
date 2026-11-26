@@ -66,6 +66,9 @@ public:
 	// Target ID meaning "the opponent player" instead of a card.
 	static constexpr int32 PlayerTarget = INDEX_NONE;
 
+	// The pawn sitting in Seat, or null.
+	ASeatedPawn* FindSeatedPawn(int32 Seat) const;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Board")
 	TSubclassOf<ACardActor> CardClass;
 
@@ -171,8 +174,6 @@ private:
 
 	// Where an attack on TargetId should aim (the card, or the player's side of the table).
 	FVector GetAttackTargetLocation(int32 Seat, int32 TargetId) const;
-
-	ASeatedPawn* FindSeatedPawn(int32 Seat) const;
 
 	UFUNCTION()
 	void OnRep_Rows();

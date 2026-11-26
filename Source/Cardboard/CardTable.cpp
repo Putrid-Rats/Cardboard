@@ -35,8 +35,8 @@ void ACardTable::PlaceCard(int32 Seat, int32 InsertIndex, FName CardId)
 		NewCard.Trait = Definition->Trait;
 	}
 
-	// Can't attack the turn it's played.
-	NewCard.bCanAttack = false;
+	// Can't attack the turn it's played, unless it has Charge.
+	NewCard.bCanAttack = NewCard.Trait == ECardTrait::Charge;
 	NewCard.bStealthed = NewCard.Trait == ECardTrait::Stealth;
 
 	Row->Insert(NewCard, FMath::Clamp(InsertIndex, 0, Row->Num()));

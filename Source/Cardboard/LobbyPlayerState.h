@@ -1,11 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/PlayerState.h"
+#include "CardPlayerState.h"
 #include "LobbyPlayerState.generated.h"
 
 UCLASS()
-class CARDBOARD_API ALobbyPlayerState : public APlayerState
+class CARDBOARD_API ALobbyPlayerState : public ACardPlayerState
 {
 	GENERATED_BODY()
 

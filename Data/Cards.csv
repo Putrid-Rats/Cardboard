@@ -1,13 +1,24 @@
-ID,CardName,Cost,Attack,Health,Trait,AbilityId,Copies,Material
-Mouse,Mouse,1,1,2,None,,3,/Game/TCG_Main/Materials/Cards/MI_Card_Mouse.MI_Card_Mouse
-Rat,Rat,1,2,1,None,,3,/Game/TCG_Main/Materials/Cards/MI_Card_Rat.MI_Card_Rat
-Pigeon,Pigeon,2,1,3,Fly,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Pigeon.MI_Card_Pigeon
-Kitty,Kitty,2,3,2,None,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Kitty.MI_Card_Kitty
-Puppy,Puppy,2,2,2,Taunt,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Puppy.MI_Card_Puppy
-Possum,Possum,2,2,2,Stealth,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Possum.MI_Card_Possum
-Fox,Fox,3,4,2,Stealth,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Fox.MI_Card_Fox
-Crow,Crow,3,3,2,Fly,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Crow.MI_Card_Crow
-Hedgehog,Hedgehog,4,3,5,Taunt,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Hedgehog.MI_Card_Hedgehog
-Dog,Dog,5,5,4,Taunt,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Dog.MI_Card_Dog
-Bear,Bear,6,6,7,None,,2,/Game/TCG_Main/Materials/Cards/MI_Card_Bear.MI_Card_Bear
-Coin,The Coin,0,0,1,None,,0,
+ID,CardName,Cost,Attack,Health,Trait,Ability,AbilityValue,Material
+Rat,Rat,1,2,1,None,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Rat.MI_Card_Rat
+Ant,Ant,1,1,1,Charge,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Ant.MI_Card_Ant
+Lizard,Lizard,1,1,1,None,DamageOpponent,1,/Game/TCG_Main/Materials/Cards/MI_Card_Lizard.MI_Card_Lizard
+Mouse,Mouse,2,2,3,None,OpponentDraws,2,/Game/TCG_Main/Materials/Cards/MI_Card_Mouse.MI_Card_Mouse
+Puppy,Puppy,2,2,2,Taunt,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Puppy.MI_Card_Puppy
+Pigeon,Pigeon,2,2,1,Fly,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Pigeon.MI_Card_Pigeon
+Rooster,Rooster,2,2,1,Charge,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Rooster.MI_Card_Rooster
+RedPanda,Red Panda,2,1,2,None,Draw,1,/Game/TCG_Main/Materials/Cards/MI_Card_RedPanda.MI_Card_RedPanda
+Crab,Crab,2,1,3,Taunt,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Crab.MI_Card_Crab
+Possum,Possum,2,2,2,Stealth,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Possum.MI_Card_Possum
+Fox,Fox,3,4,2,Stealth,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Fox.MI_Card_Fox
+Crow,Crow,3,3,2,Fly,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Crow.MI_Card_Crow
+Hedgehog,Hedgehog,3,2,4,Taunt,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Hedgehog.MI_Card_Hedgehog
+Cat,Cat,3,4,3,None,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Cat.MI_Card_Cat
+Camel,Camel,3,2,3,Taunt,Heal,2,/Game/TCG_Main/Materials/Cards/MI_Card_Camel.MI_Card_Camel
+Dog,Dog,4,4,4,Taunt,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Dog.MI_Card_Dog
+Donkey,Donkey,4,2,6,Taunt,OpponentDraws,2,/Game/TCG_Main/Materials/Cards/MI_Card_Donkey.MI_Card_Donkey
+Horse,Horse,4,4,5,None,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Horse.MI_Card_Horse
+Ram,Ram,4,4,3,Charge,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Ram.MI_Card_Ram
+Deer,Deer,5,4,6,None,Heal,3,/Game/TCG_Main/Materials/Cards/MI_Card_Deer.MI_Card_Deer
+Bear,Bear,6,6,7,None,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Bear.MI_Card_Bear
+Hippo,Hippo,7,7,8,None,None,0,/Game/TCG_Main/Materials/Cards/MI_Card_Hippo.MI_Card_Hippo
+Coin,The Coin,0,0,1,None,None,0,
