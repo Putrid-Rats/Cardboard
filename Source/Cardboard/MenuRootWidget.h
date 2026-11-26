@@ -48,4 +48,8 @@ protected:
 private:
 
 	void SetOnlyVisible(UUserWidget* WidgetToShow);
+
+	// Back in the settings panel: return to the main menu.
+	UFUNCTION()
+	void HandleSettingsClosed();
 };

@@ -8,7 +8,7 @@
 
 namespace
 {
-	void SetText(UTextBlock* Text, const FString& Value)
+	void SetSummaryText(UTextBlock* Text, const FString& Value)
 	{
 		if (Text)
 		{
@@ -62,22 +62,22 @@ void USummaryWidget::Refresh()
 
 	if (CardGameState)
 	{
-		SetText(ResultText, CardGameState->GetWinningSeat() == Me->SeatIndex ? TEXT("VICTORY") : TEXT("DEFEAT"));
+		SetSummaryText(ResultText, CardGameState->GetWinningSeat() == Me->SeatIndex ? TEXT("VICTORY") : TEXT("DEFEAT"));
 
 		const int32 Seconds = FMath::RoundToInt(CardGameState->GetMatchDuration());
-		SetText(MatchInfoText, FString::Printf(TEXT("%d turns  ·  %d:%02d"), CardGameState->GetTurnNumber(), Seconds / 60, Seconds % 60));
+		SetSummaryText(MatchInfoText, FString::Printf(TEXT("%d turns  ·  %d:%02d"), CardGameState->GetTurnNumber(), Seconds / 60, Seconds % 60));
 	}
 
-	SetText(YourNameText, Me->GetPlayerDisplayName());
-	SetText(YourStatsText, FormatStats(Me->MatchStats, Me->GetHealth()));
+	SetSummaryText(YourNameText, Me->GetPlayerDisplayName());
+	SetSummaryText(YourStatsText, FormatStats(Me->MatchStats, Me->GetHealth()));
 
 	if (Opponent)
 	{
-		SetText(OpponentNameText, Opponent->GetPlayerDisplayName());
-		SetText(OpponentStatsText, FormatStats(Opponent->MatchStats, Opponent->GetHealth()));
+		SetSummaryText(OpponentNameText, Opponent->GetPlayerDisplayName());
+		SetSummaryText(OpponentStatsText, FormatStats(Opponent->MatchStats, Opponent->GetHealth()));
 	}
 
-	SetText(HistoryText, FString::Printf(TEXT("Your record: %d %s, %d %s"),
+	SetSummaryText(HistoryText, FString::Printf(TEXT("Your record: %d %s, %d %s"),
 		Wins, Wins == 1 ? TEXT("win") : TEXT("wins"),
 		Losses, Losses == 1 ? TEXT("loss") : TEXT("losses")));
 
@@ -85,11 +85,11 @@ void USummaryWidget::Refresh()
 
 	if (Me->IsRematchReady())
 	{
-		SetText(RematchStatusText, TEXT("Waiting for the opponent..."));
+		SetSummaryText(RematchStatusText, TEXT("Waiting for the opponent..."));
 	}
 	else
 	{
-		SetText(RematchStatusText, bOpponentReady ? TEXT("Your opponent wants a rematch!") : TEXT(""));
+		SetSummaryText(RematchStatusText, bOpponentReady ? TEXT("Your opponent wants a rematch!") : TEXT(""));
 	}
 
 	if (RematchButton)

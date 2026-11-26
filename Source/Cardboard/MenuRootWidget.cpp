@@ -2,9 +2,17 @@
 
 #include "MenuRootWidget.h"
 
+#include "SettingsWidget.h"
+
 void UMenuRootWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	// Back in the settings panel returns to the main menu (AddUnique: construct can run more than once).
+	if (USettingsWidget* SettingsWidget = Cast<USettingsWidget>(Settings))
+	{
+		SettingsWidget->OnClosed.AddUniqueDynamic(this, &UMenuRootWidget::HandleSettingsClosed);
+	}
 
 	ShowMainMenu();
 }
@@ -88,5 +96,16 @@ void UMenuRootWidget::ShowLobby()
 
 void UMenuRootWidget::ShowSettings()
 {
+	// Show the saved values, not whatever was left on the sliders after a Back without Apply.
+	if (USettingsWidget* SettingsWidget = Cast<USettingsWidget>(Settings))
+	{
+		SettingsWidget->RefreshFromSettings();
+	}
+
 	SetOnlyVisible(Settings);
+}
+
+void UMenuRootWidget::HandleSettingsClosed()
+{
+	ShowMainMenu();
 }
