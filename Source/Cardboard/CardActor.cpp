@@ -37,15 +37,42 @@ ACardActor::ACardActor()
 	const float Right = CardWidth * 0.5f - 0.8f;
 	const float Top = CardHeight * 0.5f - 0.8f;
 
-	CostText = CreateCardText(TEXT("CostText"), -Right, Top, 1.0f, FColor(20, 60, 200));
-	NameText = CreateCardText(TEXT("NameText"), 0.0f, Top - 1.5f, 0.6f, FColor::Black);
-	TraitText = CreateCardText(TEXT("TraitText"), 0.0f, 0.0f, 0.5f, FColor(90, 40, 130));
-	AttackText = CreateCardText(TEXT("AttackText"), -Right, -Top, 1.0f, FColor(200, 120, 0));
-	HealthText = CreateCardText(TEXT("HealthText"), Right, -Top, 1.0f, FColor(200, 20, 20));
+	CostText = CreateCardText(TEXT("CostText"), -Right, Top, 1.0f, FColor::Black);
+	// Name along the top edge, right of the cost coin, where the art leaves empty cardboard; trait just under it.
+	NameText = CreateCardText(TEXT("NameText"), 0.6f, Top + 0.35f, 0.6f, FColor::Black);
+	TraitText = CreateCardText(TEXT("TraitText"), 0.6f, Top - 0.35f, 0.45f, FColor(60, 60, 60));
+	AttackText = CreateCardText(TEXT("AttackText"), -Right, -Top, 1.0f, FColor::Black);
+	HealthText = CreateCardText(TEXT("HealthText"), Right, -Top, 1.0f, FColor::Black);
+
+	// Placeholders, so the texts can be seen and moved in the BP_CardActor viewport.
+	// Every spawned card calls SetCard or ClearCard right away, so they never show in game.
+	CostText->SetText(FText::FromString(TEXT("0")));
+	NameText->SetText(FText::FromString(TEXT("Card Name")));
+	TraitText->SetText(FText::FromString(TEXT("Trait")));
+	AttackText->SetText(FText::FromString(TEXT("0")));
+	HealthText->SetText(FText::FromString(TEXT("0")));
 
 	// Behind the card (on the table: underneath it), sticking out as a border.
 	TraitFrame = CreateFrame(TEXT("TraitFrame"), 0.6f, CardThickness * 0.75f);
 	ReadyFrame = CreateFrame(TEXT("ReadyFrame"), 1.2f, CardThickness * 1.25f);
+}
+
+void ACardActor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	for (UTextRenderComponent* Text : { NameText, TraitText, CostText, AttackText, HealthText })
+	{
+		if (TextFont)
+		{
+			Text->SetFont(TextFont);
+		}
+
+		if (TextMaterial)
+		{
+			Text->SetTextMaterial(TextMaterial);
+		}
+	}
 }
 
 UStaticMeshComponent* ACardActor::CreateFrame(FName Name, float Margin, float BehindOffset)

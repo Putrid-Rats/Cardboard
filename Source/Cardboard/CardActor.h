@@ -7,6 +7,7 @@
 
 class UStaticMeshComponent;
 class UTextRenderComponent;
+class UFont;
 
 // One card in the world, the size of a standard 2.5" x 3.5" trading card. Thin along X, width along Y, height along Z.
 // The C++ default mesh is the engine cube; BP_CardActor swaps in the real card model.
@@ -34,6 +35,19 @@ public:
 	// Empty = keep the mesh's own material.
 	UPROPERTY(EditDefaultsOnly, Category = "Card")
 	TObjectPtr<UMaterialInterface> DefaultMaterial;
+
+	// Font for all texts on the card. Must be an Offline font with distance field alpha (import settings
+	// copied from the engine's RobotoDistanceField), since Text Render materials expect one. Empty = engine default.
+	UPROPERTY(EditDefaultsOnly, Category = "Card|Text")
+	TObjectPtr<UFont> TextFont;
+
+	// Material for all texts: an instance of DefaultTextMaterialOpaque with its Font parameter set to TextFont.
+	// Needed with a custom font, or the letters render garbled.
+	UPROPERTY(EditDefaultsOnly, Category = "Card|Text")
+	TObjectPtr<UMaterialInterface> TextMaterial;
+
+	// Applies TextFont / TextMaterial in the Blueprint viewport too.
+	virtual void OnConstruction(const FTransform& Transform) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
 	TObjectPtr<UTextRenderComponent> NameText;
