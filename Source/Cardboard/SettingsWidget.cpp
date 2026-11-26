@@ -25,6 +25,14 @@ namespace
 		return FString::Printf(TEXT("%d x %d"), Resolution.X, Resolution.Y);
 	}
 
+	// Screen percentage. A fresh settings file stores 0 ("engine default"), which is 100%.
+	float GetResolutionScalePercent(const UCardboardUserSettings* Settings)
+	{
+		float ScaleNormalized, ScaleValue, MinScale, MaxScale;
+		Settings->GetResolutionScaleInformationEx(ScaleNormalized, ScaleValue, MinScale, MaxScale);
+		return ScaleValue > 0.0f ? ScaleValue : 100.0f;
+	}
+
 	void SetSlider(USlider* Slider, float Min, float Max, float Step)
 	{
 		if (Slider)
@@ -166,9 +174,7 @@ void USettingsWidget::RefreshFromSettings()
 
 	if (ResolutionScaleSlider)
 	{
-		float ScaleNormalized, ScaleValue, MinScale, MaxScale;
-		Settings->GetResolutionScaleInformationEx(ScaleNormalized, ScaleValue, MinScale, MaxScale);
-		ResolutionScaleSlider->SetValue(ScaleValue);
+		ResolutionScaleSlider->SetValue(GetResolutionScalePercent(Settings));
 	}
 
 	if (GammaSlider) { GammaSlider->SetValue(Settings->GetGamma()); }
@@ -190,10 +196,7 @@ void USettingsWidget::UpdateValueTexts()
 		return;
 	}
 
-	float ScaleNormalized, ScaleValue, MinScale, MaxScale;
-	Settings->GetResolutionScaleInformationEx(ScaleNormalized, ScaleValue, MinScale, MaxScale);
-
-	SetText(ResolutionScaleText, FString::Printf(TEXT("%d%%"), FMath::RoundToInt(ScaleValue)));
+	SetText(ResolutionScaleText, FString::Printf(TEXT("%d%%"), FMath::RoundToInt(GetResolutionScalePercent(Settings))));
 	SetText(GammaText, FString::Printf(TEXT("%.2f"), Settings->GetGamma()));
 	SetText(FieldOfViewText, FString::Printf(TEXT("%d°"), FMath::RoundToInt(Settings->GetFieldOfView())));
 	SetText(MasterVolumeText, FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Settings->GetMasterVolume() * 100.0f)));
