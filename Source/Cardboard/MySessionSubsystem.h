@@ -115,6 +115,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Sessions")
     void DestroyLobby();
 
+    // Leaves the current game for the main menu: destroys the session, then opens the game's default map.
+    // When the host leaves, the other player loses the connection and is sent back to the main menu too.
+    UFUNCTION(BlueprintCallable, Category = "Sessions")
+    void LeaveToMainMenu();
+
 
     // -----------------------------------------------------
     // RESULTS
@@ -157,6 +162,11 @@ private:
 
     bool bCreateAfterDestroy = false;
     bool bIsDestroyingSession = false;
+
+    // LeaveToMainMenu: open the main menu once the session is gone.
+    bool bOpenMainMenuAfterDestroy = false;
+
+    void OpenMainMenu();
     bool bShuttingDown = false;
 
     FString PendingLobbyName;

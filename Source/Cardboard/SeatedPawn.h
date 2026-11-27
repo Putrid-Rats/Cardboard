@@ -13,6 +13,7 @@ class UInputAction;
 class UInputMappingContext;
 class UInstancedStaticMeshComponent;
 class USummaryWidget;
+class UPauseMenuWidget;
 struct FCardDefinition;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -240,6 +241,15 @@ public:
 	// Seconds between the VICTORY / DEFEAT banner and the summary screen.
 	UPROPERTY(EditDefaultsOnly, Category = "Seat|Summary")
 	float SummaryDelay = 2.5f;
+
+	// The in-match menu opened with Esc or P (WBP_PauseMenu). Set in BP_SeatedPawn's Class Defaults.
+	UPROPERTY(EditDefaultsOnly, Category = "Seat|Pause")
+	TSubclassOf<UPauseMenuWidget> PauseMenuClass;
+
+	// Opens the pause menu, or closes it (Esc in its settings panel goes back to the menu first).
+	void TogglePauseMenu();
+
+	void ClosePauseMenu();
 
 	// The player's name (Steam name online), or "Player 1" / "Player 2".
 	UFUNCTION(BlueprintPure, Category = "Seat")
@@ -497,6 +507,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<USummaryWidget> SummaryWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UPauseMenuWidget> PauseMenuWidget;
 
 	FTimerHandle SummaryTimer;
 

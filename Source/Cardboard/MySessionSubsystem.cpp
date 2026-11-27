@@ -8,6 +8,9 @@
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
 #include "Misc/CoreDelegates.h"
+#include "GameMapsSettings.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/PackageName.h"
 
 
 void UMySessionSubsystem::Initialize(
@@ -938,6 +941,48 @@ void UMySessionSubsystem::OnDestroySessionComplete(
 
 	// Normal Leave / cleanup.
 	OnSessionDestroyed.Broadcast(bWasSuccessful);
+
+	if (bOpenMainMenuAfterDestroy)
+	{
+		OpenMainMenu();
+	}
+}
+
+void UMySessionSubsystem::LeaveToMainMenu()
+{
+	bOpenMainMenuAfterDestroy = true;
+
+	// Nothing to clean up (or already cleaning up): the completion handler opens the menu in the second case.
+	if (!SessionInterface.IsValid() || SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
+	{
+		OpenMainMenu();
+		return;
+	}
+
+	if (bIsDestroyingSession)
+	{
+		return;
+	}
+
+	DestroyLobby();
+
+	// DestroySession failed to start: leave anyway rather than strand the player in the match.
+	if (!bIsDestroyingSession && bOpenMainMenuAfterDestroy)
+	{
+		OpenMainMenu();
+	}
+}
+
+void UMySessionSubsystem::OpenMainMenu()
+{
+	bOpenMainMenuAfterDestroy = false;
+
+	// The game's default map (Project Settings > Maps & Modes), as a package path for OpenLevel.
+	const FString MainMenuMap = FPackageName::ObjectPathToPackageName(UGameMapsSettings::GetGameDefaultMap());
+
+	UE_LOG(LogTemp, Log, TEXT("Leaving to the main menu: %s"), *MainMenuMap);
+
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(*MainMenuMap));
 }
 
 void UMySessionSubsystem::HandleNetworkFailure(

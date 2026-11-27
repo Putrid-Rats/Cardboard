@@ -23,6 +23,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "SummaryWidget.h"
+#include "PauseMenuWidget.h"
 #include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
@@ -579,6 +580,10 @@ void ASeatedPawn::UpdateStatusText()
 void ASeatedPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	// Pause menu. P as well, because in the editor (Play In Editor) Esc stops the play session.
+	PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ASeatedPawn::TogglePauseMenu);
+	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &ASeatedPawn::TogglePauseMenu);
 
 	UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 
@@ -1573,7 +1578,7 @@ void ASeatedPawn::HandleLook(const FVector2D& MouseDelta)
 	const FVector2D LookInput = MouseDelta * LookSensitivity * SettingsSensitivity;
 
 	// No looking around while the summary screen needs the mouse.
-	if (bInTableView || SummaryWidget || LookInput.IsNearlyZero())
+	if (bInTableView || SummaryWidget || PauseMenuWidget || LookInput.IsNearlyZero())
 	{
 		return;
 	}
@@ -1614,6 +1619,55 @@ void ASeatedPawn::SetTableView(bool bEnable)
 	OnTableViewChanged(bInTableView);
 }
 
+void ASeatedPawn::TogglePauseMenu()
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+
+	if (!PlayerController || !PlayerController->IsLocalController())
+	{
+		return;
+	}
+
+	if (PauseMenuWidget)
+	{
+		// Esc in the settings panel steps back to the menu first.
+		if (!PauseMenuWidget->CloseSettingsPanel())
+		{
+			ClosePauseMenu();
+		}
+
+		return;
+	}
+
+	if (!PauseMenuClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SeatedPawn: no PauseMenuClass set in BP_SeatedPawn, no pause menu"));
+		return;
+	}
+
+	PauseMenuWidget = CreateWidget<UPauseMenuWidget>(PlayerController, PauseMenuClass);
+
+	if (PauseMenuWidget)
+	{
+		// Above the summary screen (10), so it can be opened from there too.
+		PauseMenuWidget->AddToViewport(20);
+		PauseMenuWidget->Init(this);
+	}
+
+	ApplyCursorMode();
+}
+
+void ASeatedPawn::ClosePauseMenu()
+{
+	if (PauseMenuWidget)
+	{
+		PauseMenuWidget->RemoveFromParent();
+		PauseMenuWidget = nullptr;
+	}
+
+	ApplyCursorMode();
+}
+
 void ASeatedPawn::ApplyCursorMode()
 {
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
@@ -1623,8 +1677,8 @@ void ASeatedPawn::ApplyCursorMode()
 		return;
 	}
 
-	// The cursor is needed for the cards (table view) and for the summary screen's buttons.
-	const bool bNeedsCursor = bInTableView || SummaryWidget != nullptr;
+	// The cursor is needed for the cards (table view) and for the summary screen's and pause menu's buttons.
+	const bool bNeedsCursor = bInTableView || SummaryWidget != nullptr || PauseMenuWidget != nullptr;
 	PlayerController->SetShowMouseCursor(bNeedsCursor);
 
 	if (bNeedsCursor)
