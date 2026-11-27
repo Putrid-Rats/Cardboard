@@ -195,8 +195,8 @@ Serwer jest autorytatywny — klient wysyła tylko prośby (RPC), a serwer je we
 
 | Asset | Źródło | Licencja |
 |---|---|---|
-| Model karty, grafiki kart | Wykonane przez zespół (SmollMaggie, GTZMCHN) | Własne |
-| Model zaułka (poziom rozgrywki), skrzynie | Wykonane przez zespół (SmollMaggie) | Własne |
+| Model karty, grafiki kart | Wykonane przez zespół (Maria N., Olga J.) | Własne |
+| Model zaułka (poziom rozgrywki), skrzynie | Wykonane przez zespół (Maria N.) | Własne |
 | Kontener na śmieci, worki i sterty śmieci, skrzynka elektryczna | Fab.com — TODO: nazwy pakietów | Fab Standard License |
 | Dźwięki przycisków i otwierania kartonu | Freesound.org, użytkownik *newagesoup*: „hit tap strike cardboard box 13 times” (pocięty na pojedyncze dźwięki) — TODO: link | TODO: licencja ze strony dźwięku (CC0 / CC BY) |
 | Tekstury kartonu w interfejsie | TODO: nazwa strony | TODO: licencja (darmowe) |
@@ -213,9 +213,9 @@ Serwer jest autorytatywny — klient wysyła tylko prośby (RPC), a serwer je we
 
 | Osoba | Zakres prac |
 |---|---|
-| **TODO: twój nick** | Programowanie (C++ i Blueprinty): sesje Steam, menu główne, lobby z systemem ready, przebieg meczu i zasady gry, karty i talie, interfejs (podsumowanie, wybór talii, ustawienia, menu pauzy), menu główne z animowanym tłem, przygotowanie wersji spakowanej. |
-| **SmollMaggie** | Grafika 3D i 2D: model karty, tekstury i grafiki kart, poziom rozgrywki i model zaułka wraz z otoczeniem, placeholdery postaci graczy. |
-| **GTZMCHN** | Grafiki kart. |
+| **Gordon P.** | Programowanie (C++ i Blueprinty): sesje Steam, menu główne, lobby z systemem ready, przebieg meczu i zasady gry, karty i talie, interfejs (podsumowanie, wybór talii, ustawienia, menu pauzy), menu główne z animowanym tłem, przygotowanie wersji spakowanej. |
+| **Maria N.** | Grafika 3D i 2D: model karty, tekstury i grafiki kart, poziom rozgrywki i model zaułka wraz z otoczeniem, placeholdery postaci graczy. |
+| **Olga J.** | Grafiki kart. |
 
 ---
 
@@ -245,5 +245,3 @@ i podejmował decyzje projektowe.
 **Wykonane bez udziału AI:** wszystkie grafiki, modele 3D, tekstury, poziom rozgrywki, dźwięki
 (wybór i montaż), koncepcja gry i wygląd interfejsu.
 
-TODO: zespół — sprawdźcie i popraw ten rozdział, jeśli zakres pracy z AI wyglądał inaczej
-(np. które części sesji i lobby powstały przed rozpoczęciem pracy z AI).
