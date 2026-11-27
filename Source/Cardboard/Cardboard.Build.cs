@@ -8,7 +8,7 @@ public class Cardboard : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "OnlineSubsystem", "EnhancedInput", "UMG", "DeveloperSettings", "Slate", "SlateCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "OnlineSubsystem", "EnhancedInput", "UMG", "DeveloperSettings", "Slate", "SlateCore", "EngineSettings" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
