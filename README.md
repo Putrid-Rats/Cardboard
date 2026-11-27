@@ -202,6 +202,10 @@ Serwer jest autorytatywny — klient wysyła tylko prośby (RPC), a serwer je we
 | Tekstury kartonu w interfejsie | TODO: nazwa strony | TODO: licencja (darmowe) |
 | Czcionka **Permanent Marker** | Font Diner, Google Fonts | Apache License 2.0 |
 | Zawartość szablonów UE (m.in. materiały silnika) | Epic Games | Licencja Unreal Engine |
+| Model śmietnika | Sketchfab.com użytkownik *YJ_* "dumpster" https://sketchfab.com/3d-models/dumpster-989ea7f01b924859b3484ee27103e8d9 
+| Model rozdzielnicy elektrycznej | Sketchfab.com, użytkownik *InGameStudio* "Power Box 2.0" https://sketchfab.com/3d-models/power-box-20-279768a76e0f422ca7e69befd20c845f
+| Modele śmieci | Sketchfab.com, użytkownik *Sunbox Games*: "Pile of trash and garbage - 3 Piece set" https://sketchfab.com/3d-models/pile-of-trash-and-garbage-3-piece-set-a441c0d002bc49a59237f8003b5a7eb8
+| Modele worków na śmieci | Sketchfab.com użytkownik *Anna Denisova* "Low Poly | "Plastic Garbage Bags" https://sketchfab.com/3d-models/low-poly-plastic-garbage-bags-51cb07645ffa494e9bb67b292f4df86e
 
 ---
 
